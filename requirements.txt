@@ -7,3 +7,6 @@ scvelo
 cellrank
 accelerate
 wandb
+python-igraph
+cython
+fa2_modified

@@ -18,8 +18,6 @@ def map_embeddings_to_umap(embeddings: List[np.ndarray], basis: str = "umap") ->
     ----------
     embeddings
         List of embeddings to map to UMAP space.
-    adata
-        Annotated data object.
     basis
         Basis to map the embeddings to.
 
@@ -35,9 +33,9 @@ def map_embeddings_to_umap(embeddings: List[np.ndarray], basis: str = "umap") ->
 
 
 def plot(
-        adata: AnnData,
+        adata: AnnData = None,
         sims: List[np.ndarray] = None,
-        trajectory_embeddings: List[np.ndarray] = None,
+        trajectory_embeddings: List[List[np.ndarray]] = None,
         basis: str = "umap",
         cmap: Union[str, LinearSegmentedColormap] = "gnuplot",
         linewidth: float = 1.0,
@@ -73,7 +71,7 @@ def plot(
     %(just_plots)s
     """
     # emb = _get_basis(self._adata, basis)
-    emb = adata.obsm[f"X_{basis}"]
+
     if isinstance(cmap, str):
         cmap = plt.get_cmap(cmap)
     if not isinstance(cmap, LinearSegmentedColormap):
@@ -86,9 +84,11 @@ def plot(
         )
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-    scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
+
 
     if trajectory_embeddings is not None:
+        # scv.pl.scatter(x=, basis=basis, show=False, ax=ax, **kwargs)
+
         for i, emb in enumerate(trajectory_embeddings):
             x = emb[:, 0]
             y = emb[:, 1]
@@ -106,12 +106,12 @@ def plot(
             ax.add_collection(lc)
 
         for ix in [0, -1]:
-            ixs = [trajectory_embedding[ix] for trajectory_embedding in trajectory_embeddings]
+            emb = np.array([trajectory_embedding[ix] for trajectory_embedding in trajectory_embeddings])
             from scvelo.plotting.utils import default_size, plot_outline
 
             plot_outline(
-                x=emb[ixs][:, 0],
-                y=emb[ixs][:, 1],
+                x=emb[:, 0],
+                y=emb[:, 1],
                 outline_color=("black", to_hex(cmap(float(abs(ix))))),
                 kwargs={
                     "s": kwargs.get("size", default_size(adata)) * 1.1,
@@ -122,7 +122,9 @@ def plot(
             )
 
     else:
+        scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
 
+        emb = adata.obsm[f"X_{basis}"]
         # logg.info("Plotting random walks")
         for sim in sims:
             x = emb[sim][:, 0]

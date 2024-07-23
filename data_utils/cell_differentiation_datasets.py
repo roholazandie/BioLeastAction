@@ -83,12 +83,13 @@ def get_dataset(dataset_name,
 
 if __name__ == "__main__":
     adata = cr.datasets.reprogramming_schiebinger(subset_to_serum=True)
+    # adata = sc.read_h5ad("/home/rohola/codes/cellrank_playground/reprogramming_schiebinger_forced_directed2.h5ad")
 
     iterable_dataset = IterableAnnDataTrajectoryDataset(adata, embedding_size=64)
     trajectories = []
     for i, trajectory in enumerate(iterable_dataset):
         trajectories.append(trajectory)
-        if i == 100:
+        if i == 10:
             break
 
     trajectories = [t["trajectory_cell_indices"] for t in trajectories]
@@ -97,6 +98,7 @@ if __name__ == "__main__":
         adata,
         list(trajectories),
         basis='force_directed',
+        # basis='draw_graph_fa',
         cmap='gnuplot',
         linewidth=1.0,
         linealpha=0.3,
