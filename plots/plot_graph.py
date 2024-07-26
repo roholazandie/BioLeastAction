@@ -46,31 +46,31 @@ def extract_force_directed_graph(adata,
     t6 = time.time()
     print(f"Time taken to compute force directed graph: {t6 - t5}")
 
-    adata.write(f"../data/reprogramming_schiebinger_{knn_metric}_{n_neighbors}.h5ad")
+    adata.write(f"/home/rohola/codes/BioLeastAction/data/reprogramming_schiebinger_{knn_metric}_{n_neighbors}.h5ad")
 
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
+    adata = sc.read_h5ad("/home/rohola/codes/BioLeastAction/data/reprogramming_schiebinger_serum_computed.h5ad")
     knn_metric = "euclidean"
     n_neighbors = 10
-    for knn_metric in ["euclidean", "manhattan", "cosine", "l1", "l2", "haversine", "nan_euclidean", "cityblock"]:
-        extract_force_directed_graph(adata, knn_metric=knn_metric, n_neighbors=n_neighbors, n_dims=2)
+    # for knn_metric in ["chebyshev", "l1", "l2", "infinity", "cityblock", "p", "minkowski"]:
+    extract_force_directed_graph(adata, knn_metric=knn_metric, n_neighbors=n_neighbors, n_dims=2)
 
-        import scvelo as scv
-        import matplotlib.pyplot as plt
+    import scvelo as scv
+    import matplotlib.pyplot as plt
 
-        adata = sc.read_h5ad(f"../data/reprogramming_schiebinger_{knn_metric}_{n_neighbors}.h5ad")
-        # adata.obsm["X_draw_graph_fa"]
-        adata.obs["day"] = adata.obs["day"].astype(float).astype("category")
+    adata = sc.read_h5ad(f"/home/rohola/codes/BioLeastAction/data/reprogramming_schiebinger_{knn_metric}_{n_neighbors}.h5ad")
+    # adata.obsm["X_draw_graph_fa"]
+    adata.obs["day"] = adata.obs["day"].astype(float).astype("category")
 
-        # In addition, it's nicer for plotting to have numerical values.
-        adata.obs["day_numerical"] = adata.obs["day"].astype(float)
-        scv.pl.scatter(adata,
-                       basis='X_draw_graph_fa',
-                       color=["day_numerical", "cell_sets"],
-                       show=False,
-                       save=f"../outputs/force_directed_graph_{knn_metric}_{n_neighbors}.png",
-                       title=f"Force Directed Graph: metric: {knn_metric}, neighbors {n_neighbors}",
-                       dpi=300)
-        plt.show()
+    # In addition, it's nicer for plotting to have numerical values.
+    adata.obs["day_numerical"] = adata.obs["day"].astype(float)
+    scv.pl.scatter(adata,
+                   basis='X_draw_graph_fa',
+                   color=["day_numerical", "cell_sets"],
+                   show=False,
+                   save=f"../outputs/force_directed_graph_{knn_metric}_{n_neighbors}.png",
+                   title=f"Force Directed Graph: metric: {knn_metric}, neighbors {n_neighbors}",
+                   dpi=300)
+    plt.show()

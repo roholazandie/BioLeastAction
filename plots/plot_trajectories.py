@@ -87,11 +87,11 @@ def plot(
 
 
     if trajectory_embeddings is not None:
-        # scv.pl.scatter(x=, basis=basis, show=False, ax=ax, **kwargs)
+        scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
 
-        for i, emb in enumerate(trajectory_embeddings):
-            x = emb[:, 0]
-            y = emb[:, 1]
+        for i, embs in enumerate(trajectory_embeddings):
+            x = [emb[0] for emb in embs]
+            y = [emb[0] for emb in embs]
             points = np.array([x, y]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             n_seg = len(segments)
@@ -122,7 +122,7 @@ def plot(
             )
 
     else:
-        scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
+        scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
 
         emb = adata.obsm[f"X_{basis}"]
         # logg.info("Plotting random walks")

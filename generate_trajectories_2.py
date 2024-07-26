@@ -38,35 +38,28 @@ while True:
     # print(output)
     # convert to embedding trajectory
     trajectories_embedding.append([x.cpu().numpy() for x in output.squeeze(0)])
-    if len(trajectories_embedding) == 100:
+    if len(trajectories_embedding) == 500:
         break
 
 
-# this is just a dummy data
-X_pca = np.array([item for sublist in trajectories_embedding for item in sublist])
-X = scipy.sparse.random(X_pca.shape[0], adata.X.shape[1], density=0.1, data_rvs=lambda s: np.random.randint(0, 11, size=s))
-adata_generated = sc.AnnData(X.tocsr())
+#find the closest cells to the generated cells
+close_trajectories_embedding = []
+for trajectory_embedding in trajectories_embedding:
+    close_trajectory_embedding = []
+    for emb in trajectory_embedding:
+        distances = np.linalg.norm(emb - adata.obsm["X_pca"], axis=1)
+        print(np.min(distances))
+        # close_trajectory_embedding.append(adata.obsm['X_force_directed'][np.argmin(distances),:])
+        close_trajectory_embedding.append(np.argmin(distances))
 
-adata_generated.obsm['X_pca'] = X_pca
+    close_trajectories_embedding.append(close_trajectory_embedding)
 
-adata_generated.obs['generated'] = True
-
-adata_generated.var_names = adata.var_names.copy()
-adata_generated.var = adata.var.copy()
-
-# combine the two datasets
-adata = ad.concat([adata, adata_generated])
-
-extract_force_directed_graph(adata)
-
-# umap_trajectories_embedding = [map_embeddings_to_umap(trajectory_embedding) for trajectory_embedding in trajectories_embedding]
-#
-
-trajectories_embedding = [emb for emb in adata.obsm["X_draw_graph_fa"]]
+sims = close_trajectories_embedding
 
 plot(adata=adata,
-     trajectory_embeddings=trajectories_embedding,
-     basis='X_draw_graph_fa',
+     # trajectory_embeddings=close_trajectories_embedding,
+     sims=sims,
+     basis='force_directed',
      cmap='gnuplot',
      linewidth=1.0,
      linealpha=0.3,

@@ -129,10 +129,9 @@ def calculate_diffusion_map(
 ) -> Tuple[np.array, np.array, np.array]:
     assert issparse(W)
 
-    nc, labels = connected_components(W, directed=True, connection="strong")
-    logger.info("Calculating connected components is done.")
-
-    assert nc == 1
+    # nc, labels = connected_components(W, directed=True, connection="strong")
+    # logger.info("Calculating connected components is done.")
+    # assert nc == 1
 
     W_norm, diag, diag_half = calculate_normalized_affinity(
         W.astype(np.float64))  # use double precision to guarantee reproducibility
