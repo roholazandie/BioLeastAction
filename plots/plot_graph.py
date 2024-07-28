@@ -2,9 +2,10 @@ import numpy as np
 from sklearn.neighbors import KNeighborsTransformer
 import scanpy as sc
 from scanpy.neighbors import _get_indices_distances_from_sparse_matrix
-from plots.utils import calculate_affinity_matrix, calculate_diffusion_map
-from plots._draw_graphs import draw_graph
+from utils import calculate_affinity_matrix, calculate_diffusion_map
+from _draw_graphs import draw_graph
 import time
+from sklearn.metrics.pairwise import cosine_distances, haversine_distances, nan_euclidean_distances
 
 def extract_force_directed_graph(adata,
                                  knn_metric="euclidean",
@@ -54,7 +55,20 @@ if __name__ == "__main__":
     adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
     knn_metric = "euclidean"
     n_neighbors = 10
-    for knn_metric in ["euclidean", "manhattan", "cosine", "l1", "l2", "haversine", "nan_euclidean", "cityblock"]:
+    from PIL import Image
+
+    # Step 1: Create an empty PNG file
+    def create_empty_png(file_path, width=100, height=100):
+    # Create a new image with white background
+        image = Image.new('RGB', (width, height), color='white')
+        image.save(file_path)
+
+    for knn_metric in ['euclidean', 'l2', 'minkowski', 'p', 'manhattan', 'cityblock', 'l1', 'chebyshev', 'infinity']:
+        #create empty PNG
+        empty_png_path = f"../outputs/force_directed_graph_{knn_metric}_{n_neighbors}.png"
+        create_empty_png(empty_png_path)
+        print(f"Empty PNG file created at: {empty_png_path}")
+
         extract_force_directed_graph(adata, knn_metric=knn_metric, n_neighbors=n_neighbors, n_dims=2)
 
         import scvelo as scv
