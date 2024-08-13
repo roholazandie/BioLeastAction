@@ -10,14 +10,14 @@ from scipy.stats import entropy
 import logging
 import scvelo as scv
 from scanpy.neighbors import _get_indices_distances_from_sparse_matrix
-
-logger = logging.getLogger(__name__)
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+#
+# logger = logging.getLogger(__name__)
+#
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[logging.StreamHandler()]
+# )
 
 
 def get_symmetric_matrix(csr_mat: "csr_matrix") -> "csr_matrix":
@@ -129,13 +129,13 @@ def calculate_diffusion_map(
 ) -> Tuple[np.array, np.array, np.array]:
     assert issparse(W)
 
-    # nc, labels = connected_components(W, directed=True, connection="strong")
+    nc, labels = connected_components(W, directed=True, connection="strong")
     # logger.info("Calculating connected components is done.")
-    # assert nc == 1
+    assert nc == 1
 
     W_norm, diag, diag_half = calculate_normalized_affinity(
         W.astype(np.float64))  # use double precision to guarantee reproducibility
-    logger.info("Calculating normalized affinity matrix is done.")
+    # logger.info("Calculating normalized affinity matrix is done.")
 
     n_jobs = eff_n_jobs(n_jobs)
     with threadpool_limits(limits=n_jobs):
@@ -165,7 +165,7 @@ def calculate_diffusion_map(
         x = np.array(range(1, max_t + 1), dtype=float)
         y = np.array([calc_von_neumann_entropy(lambda_, t) for t in x])
         t = x[find_knee_point(x, y)]
-        logger.info("Detected knee point at t = {:.0f}.".format(t))
+        # logger.info("Detected knee point at t = {:.0f}.".format(t))
 
         lambda_new = lambda_ * ((1.0 - lambda_ ** t) / (1.0 - lambda_))
     phi_point = phi * lambda_new  # asym pseudo component

@@ -179,3 +179,7 @@ cache/
 /checkpoints/
 /datasets/
 /sc_autoencoders/wandb/
+/figures/
+/data/
+/sc_autoencoders/figures/
+/outputs/

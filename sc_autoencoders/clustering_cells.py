@@ -7,6 +7,7 @@ from sc_autoencoders.configs import Config
 from torch.utils.data import DataLoader, TensorDataset
 from matplotlib.colors import ListedColormap
 import matplotlib.pyplot as plt
+import umap
 
 def generate_colormap(n):
     """
@@ -33,8 +34,7 @@ adata = sc.read_h5ad("/home/rohola/codes/cellrank_playground/reprogramming_schie
 
 input_size = adata.n_vars
 
-config = Config(layer_sizes=[input_size, 256, 64],
-                n_embd=64,
+config = Config(layer_sizes=[input_size, 1024, 256, 64],
                 layer_norm_epsilon=1e-5,
                 embed_dropout=0.1,
                 learning_rate=0.001,
@@ -74,25 +74,51 @@ with torch.no_grad():
 
 final_latent = np.concatenate(final_latent, axis=0)
 
-tsne_embedding = TSNE(
+ploting_method = "umap"
+
+if ploting_method == "umap":
+    umap_embedding = umap.UMAP(
+        n_components=2,
+        n_neighbors=30,
+        metric="euclidean",
+        random_state=42,
+    )
+
+    latent_umap_2 = umap_embedding.fit_transform(final_latent)
+
+    adata_test = adata[test_indices]
+    # save final_latent in umap in adata
+    adata_test.obsm["X_umap"] = latent_umap_2
+
+    colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#800080']
+    cmap = ListedColormap(colors)
+
+    # cmap = generate_colormap(len(adata_test.obs['day'].unique()))
+
+    # sc.pl.embedding(adata_test, basis="X_umap", color=["cell_sets", "days"], save="sc_vanilla_clusters.png", cmap=cmap)
+    sc.pl.embedding(adata_test, basis="X_umap", color="cell_sets", save="sc_vanilla_clusters.png", cmap=cmap)
+
+elif ploting_method == "tsne":
+
+    tsne_embedding = TSNE(
     n_components=2,
     perplexity=30,
     metric="euclidean",
     n_jobs=8,
     random_state=42,
-)
+    )
 
-latent_tsne_2 = tsne_embedding.fit_transform(final_latent)
+    latent_tsne_2 = tsne_embedding.fit_transform(final_latent)
 
 
-adata_test = adata[test_indices]
-# save final_latent in tsne in adata
-adata_test.obsm["X_tsne"] = latent_tsne_2
+    adata_test = adata[test_indices]
+    # save final_latent in tsne in adata
+    adata_test.obsm["X_tsne"] = latent_tsne_2
 
-colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#800080']
-cmap = ListedColormap(colors)
+    colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#800080']
+    cmap = ListedColormap(colors)
 
-# cmap = generate_colormap(len(adata_test.obs['day'].unique()))
+    # cmap = generate_colormap(len(adata_test.obs['day'].unique()))
 
-# sc.pl.embedding(adata_test, basis="X_tsne", color=["cell_sets", "days"], save="sc_vanilla_clusters.png", cmap=cmap)
-sc.pl.embedding(adata_test, basis="X_tsne", color="cell_sets", save="sc_vanilla_clusters.png", cmap=cmap)
+    # sc.pl.embedding(adata_test, basis="X_tsne", color=["cell_sets", "days"], save="sc_vanilla_clusters.png", cmap=cmap)
+    sc.pl.embedding(adata_test, basis="X_tsne", color="cell_sets", save="sc_vanilla_clusters.png", cmap=cmap)
