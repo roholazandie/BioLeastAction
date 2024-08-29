@@ -1,9 +1,10 @@
 import argparse, logging, os
 import torch
 import numpy as np
-from transformers import GPT2Model, GPT2Config, GPT2LMHeadModel, TrainingArguments, Trainer
+from transformers import GPT2Model, GPT2Config, GPT2LMHeadModel, TrainingArguments, Trainer, pipeline
 from data_utils.cell_differentiation_datasets import get_dataset
-from models import GPT2LeastActionModel
+from models import GPT2LeastActionModel, GPT2IdLeastActionModel
+import scanpy as sc
 import wandb
 
 
@@ -52,42 +53,34 @@ if __name__ == "__main__":
     os.environ["WANDB_PROJECT"] = "BioLeastAction"  # log to your project
     os.environ["WANDB_LOG_MODEL"] = "all"  # log your models
 
-    # train_dataset = get_dataset(dataset_name="reprogramming_schiebinger", embedding_size=args.hidden_size)
-    # eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger", embedding_size=args.hidden_size, shuffle=False)
+    adata = sc.read_h5ad("/home/rohola/codes/BioLeastAction/reprogramming_schiebinger_scgen_exp_prob.h5ad")
 
-    # train_dataset = get_dataset(dataset_name="numbers", embedding_size=args.hidden_size)
-    # eval_dataset = get_dataset(dataset_name="numbers", embedding_size=args.hidden_size, shuffle=False)
-
-    # dataset_name = "tree_vectors"
-    # branch_factors = [3, 4, 2]
-    # steps = 100
-    dataset_name = "reprogramming_schiebinger"
-    train_dataset, eval_dataset = get_dataset(dataset_name=dataset_name,
+    train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
+                                              adata=adata,
                                               embedding_size=args.hidden_size,
-                                              )
-
-    # args.max_length = steps * len(branch_factors) + 1
+                                              shuffle=True)
 
     config = GPT2Config(
         n_positions=args.max_length,
         n_embd=args.hidden_size,
         n_layer=args.num_hidden_layers,
         n_head=args.num_attention_heads,
+        vocab_size=adata.X.shape[0], # number of cells
     )
 
-    # model = GPT2LeastActionModel(config)
-    model = GPT2LeastActionModel.from_pretrained("checkpoints/expression_probability/simple/reprogramming_schiebinger/checkpoint-11000")
+    model = GPT2IdLeastActionModel(config)
+    model.set_output_embeddings(torch.Tensor(adata.obsm['X_scgen']))
+    # model = GPT2IdLeastActionModel.from_pretrained("/home/rohola/codes/BioLeastAction/checkpoints/all_cells_vocabulary/checkpoint-10000")
     model.to(args.device)
 
-    # working_dir = f"{args.output_dir}/{dataset_name}_{':'.join([str(x) for x in branch_factors])}_{steps}"
-    working_dir = f"{args.output_dir}/expression_probability/simple/{dataset_name}"
+    working_dir = f"{args.output_dir}/all_cell_from_pca"
 
     training_args = TrainingArguments(
         output_dir=working_dir,
         overwrite_output_dir=True,
         num_train_epochs=args.n_epochs,
-        per_device_train_batch_size=300,
-        per_device_eval_batch_size=250,
+        per_device_train_batch_size=650,
+        per_device_eval_batch_size=350,
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
         weight_decay=1e-10,
@@ -116,14 +109,12 @@ if __name__ == "__main__":
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        optimizers=(optimizer, scheduler),
-        # data_collator=data_collator,
-        # compute_metrics=compute_metrics,
+        optimizers=(optimizer, scheduler)
     )
 
     # Train the model
-    trainer.train(resume_from_checkpoint=True)
-    # trainer.train()
+    trainer.train()
+    # trainer.train(resume_from_checkpoint=True)
 
     # Evaluate the model
     trainer.evaluate()

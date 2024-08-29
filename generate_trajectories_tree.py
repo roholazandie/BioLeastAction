@@ -11,7 +11,9 @@ from data_utils.cell_differentiation_datasets import get_dataset
 import anndata as ad
 import scvelo as scv
 import scipy
+from train_least_action import set_seed
 
+set_seed(42)
 
 def is_close_to_any(existing_embeds, new_embed, epsilon):
     for i, embed in enumerate(existing_embeds):
@@ -20,13 +22,15 @@ def is_close_to_any(existing_embeds, new_embed, epsilon):
     return False, None
 
 
-checkpoint_path = "checkpoints/tests/checkpoints_tree_vectors_6:8:2:10:5:3_10/checkpoint-351785"
+# checkpoint_path = "checkpoints/tests/checkpoints_tree_vectors_6:8:2:10:5:3_10/checkpoint-351785"
+checkpoint_path = "checkpoints/tree_vectors_3:4:2_100/checkpoint-689500"
 model = GPT2LeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
-branch_factors = [6, 8, 2, 10, 5, 3]
-steps = 10
+branch_factors = [3, 4, 2]
+steps = 100
 dimension = 64
+
 train_dataset, eval_dataset = get_dataset(dataset_name="tree_vectors",
                                           branching_factors=branch_factors,
                                           steps=steps,
@@ -35,7 +39,7 @@ train_dataset, eval_dataset = get_dataset(dataset_name="tree_vectors",
 
 data_trajectories_expressions = []
 trajectories_indices = []
-epsilon = 1
+epsilon = 0.1
 
 # first populate with data from the original dataset
 for i, trajectory in tqdm(enumerate(train_dataset)):
@@ -46,6 +50,8 @@ for i, trajectory in tqdm(enumerate(train_dataset)):
         if not is_close:
             data_trajectories_expressions.append(trajectory_expression)
             index = len(data_trajectories_expressions) - 1
+        else:
+            print("Close")
 
     if i == 100:
         break
@@ -55,13 +61,17 @@ num_trajectories = 1000
 generated_trajectories_expressions = []
 all_days = []
 random_paths = []
-input_embeds = train_dataset[0]['inputs_embeds'][0].unsqueeze(0).unsqueeze(0).to('cuda:0')
-for _ in tqdm(range(num_trajectories)):
+
+for l in tqdm(range(num_trajectories)):
+    set_seed(l+1)
+    # choose a random integer between 1 and 10 for the first time step
+    k = np.random.randint(1, 10)
+    input_embeds = train_dataset[k]['inputs_embeds'][0].unsqueeze(0).unsqueeze(0).to('cuda:0')
     # Generate text
     with torch.no_grad():
         outputs = model.generate(
             inputs_embeds=input_embeds,
-            max_length=38,  # can't be longer than number of days
+            max_length=300,  # can't be longer than number of days
             num_return_sequences=5,  # number of sequences to generate
             use_cache=True
         )
@@ -70,7 +80,7 @@ for _ in tqdm(range(num_trajectories)):
     generated_trajectories_expressions.append(trajectory_expressions)
 
 
-epsilon = 5
+epsilon = 0.01
 days = []
 cells_embeddings = []
 for path in tqdm(generated_trajectories_expressions):
@@ -113,7 +123,7 @@ scv.pl.scatter(adata_generated,
               basis='X_draw_graph_fa',
               color=["type"],
               show=False,
-              save=f"sample_.png",
+              save=f"sample_g.png",
               title=f"Force Directed Graph",
               dpi=300)
 plt.show()

@@ -45,8 +45,11 @@ def process_day_pairs(i, j):
     adata_day_j = adata[adata.obs["day_numerical"] == day_value_j, :]
 
     # Sample cells for faster computation
-    X_i = np.array(adata_day_i.obsm["X_pca"])
-    X_j = np.array(adata_day_j.obsm["X_pca"])
+    # X_i = np.array(adata_day_i.obsm["X_pca"])
+    # X_j = np.array(adata_day_j.obsm["X_pca"])
+
+    X_i = np.array(adata_day_i.X.todense())
+    X_j = np.array(adata_day_j.X.todense())
 
     # If the number of cells is large, downsample
     if X_i.shape[0] > sample_size:

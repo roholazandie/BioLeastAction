@@ -6,7 +6,6 @@ from plots.plot_graph import extract_force_directed_graph
 from plots.plot_trajectories import map_embeddings_to_umap, plot
 import matplotlib.pyplot as plt
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from gpt2_tree import generate_tree_vectors_gpt2
 import scvelo as scv
 from scipy.spatial import KDTree
 
@@ -20,22 +19,6 @@ if dataset == "random_tree_vectors":
                                          dimension=765,
                                          step_size=0.1,
                                          distribution=distribution)
-
-elif dataset == "gpt2_tree":
-    # Initialize GPT-2 model and tokenizer
-    model_name = 'gpt2'
-    model = GPT2LMHeadModel.from_pretrained(model_name)
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-    distribution = ''
-
-    # Example parameters
-    branching_factors = [1, 2]  # Branching pattern
-    steps = 50  # Number of steps to move in each direction before next branching
-    initial_prompt = "It is"  # Initial prompt token
-
-    # Generate tree vectors and paths
-    full_paths = generate_tree_vectors_gpt2(branching_factors, steps, initial_prompt, model, tokenizer)
-    random_paths = [[x[1] for x in path] for _, path in full_paths]
 
 elif dataset == "reprogramming_schiebinger":
     branching_factors = ""
@@ -74,9 +57,9 @@ elif dataset == "reprogramming_schiebinger":
 # adata = sc.AnnData(X.tocsr())
 
 
-sc.pp.highly_variable_genes(adata, flavor='seurat', n_top_genes=100)
+sc.pp.highly_variable_genes(adata, flavor='seurat', n_top_genes=450)
 adata = adata[:, adata.var['highly_variable']]
-adata = adata[:, :100]
+adata = adata[:, :450]
 sc.tl.pca(adata, n_comps=64)
 
 # adata.obsm['X_pca'] = cells_embeddings

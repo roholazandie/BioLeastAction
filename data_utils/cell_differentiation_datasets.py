@@ -91,12 +91,20 @@ class TreeVectorsDataset(Dataset):
 class AnnDataTrajectoryDataset(Dataset):
     def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9, output_embeddings=True):
         self.adata = adata
-        self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
-        self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
-
         if embedding_key is None and 'X_pca' not in self.adata.obsm.keys():
             sc.tl.pca(self.adata, n_comps=embedding_size)
             self.adata.write("reprogramming_schiebinger_serum.h5ad")
+
+        if embedding_key == "expression_probability" and "expression_probability" not in self.adata.obsm.keys():
+            sc.pp.highly_variable_genes(self.adata, flavor='seurat', n_top_genes=embedding_size)
+            self.adata = self.adata[:, self.adata.var['highly_variable']]
+            self.adata = self.adata[:, :embedding_size]
+            X_dense = np.array(self.adata.X.todense())
+            self.adata.obsm["expression_probability"] = X_dense / np.sum(X_dense, axis=1)[:, None]
+            self.adata.write("reprogramming_schiebinger_scgen_exp_prob.h5ad")
+
+        self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
+        self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
 
         self.embedding_key = embedding_key
         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
@@ -123,10 +131,10 @@ class AnnDataTrajectoryDataset(Dataset):
             if i == len(self.days_values) - 1:
                 break
 
-            pca_current_day = np.array(self.adata[current_cell_idx].obsm[self.embedding_key].tolist())
+            pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"].tolist())
             next_day_value = self.days_values[i + 1]
             adata_next_day = self.adata[self.adata.obs["day_numerical"] == next_day_value, :]
-            pca_next_day = adata_next_day.obsm[self.embedding_key]
+            pca_next_day = adata_next_day.obsm["X_pca"]
             similarity = np.exp(-np.linalg.norm(pca_current_day - pca_next_day, axis=1) / self.T)
             softmax_similarity = similarity / np.sum(similarity)
             selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=softmax_similarity)
@@ -142,91 +150,20 @@ class AnnDataTrajectoryDataset(Dataset):
             trajectory_embeddings = torch.stack([t[self.embedding_key] for t in trajectory]).squeeze(1)
             trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
             return {
-                "inputs_embeds": trajectory_embeddings[:-1],
-                "labels_embeds": trajectory_embeddings[1:],
-                "trajectory_cell_indices": trajectory_cell_indices,
+                # "inputs_embeds": trajectory_embeddings[:-1],
+                # "labels_embeds": trajectory_embeddings[1:],
+                "input_ids": trajectory_cell_indices,
+                "label_ids": trajectory_cell_indices
             }
         else:
             trajectory_expression = torch.stack([t["expression"] for t in trajectory]).squeeze(1)
             trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
             return {
-                "inputs_embeds": trajectory_expression[:-1],
-                "labels_embeds": trajectory_expression[1:],
-                "trajectory_cell_indices": trajectory_cell_indices,
+                # "inputs_embeds": trajectory_expression[:-1],
+                # "labels_embeds": trajectory_expression[1:],
+                "input_ids": trajectory_cell_indices,
+                "label_ids": trajectory_cell_indices
             }
-
-
-# class IterableAnnDataTrajectoryDataset(IterableDataset):
-#
-#     def __init__(self, adata, embedding_size=768, T=0.9, output_embeddings=True):
-#         self.adata = adata
-#         self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
-#         # In addition, it's nicer for plotting to have numerical values.
-#         self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
-#         # todo the following should be replaced with embedder
-#         if 'X_pca' not in self.adata.obsm.keys():
-#             sc.tl.pca(self.adata, n_comps=embedding_size)
-#             self.adata.write("reprogramming_schiebinger_serum.h5ad")
-#         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
-#         self.T = T
-#         self.output_embeddings = output_embeddings
-#
-#     def __len__(self) -> int:
-#         return len(self.adata)
-#
-#     def __iter__(self):
-#         while True:
-#             trajectory = []
-#             # select the cells for each day
-#             adata_first_day = self.adata[self.adata.obs["day_numerical"] == self.days_values[0], :]
-#             # select a cell randomly
-#             cell_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
-#             trajectory.append({"cell_idx": self.adata.obs.index.get_loc(cell_idx),
-#                                "pca": torch.Tensor(self.adata[cell_idx].obsm["X_pca"]),
-#                                "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense()))
-#                                }
-#                               )
-#             current_cell_idx = cell_idx
-#             for i, day_value in enumerate(self.days_values):
-#                 if i == len(self.days_values) - 1:
-#                     break
-#                 # pca current day
-#                 pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"].tolist())
-#                 next_day_value = self.days_values[i + 1]
-#                 adata_next_day = self.adata[self.adata.obs["day_numerical"] == next_day_value, :]
-#                 pca_next_day = adata_next_day.obsm["X_pca"]
-#                 # calculate the softmax similarity of the cell with all other cells in the next day with temperature T
-#                 similarity = np.exp(-np.linalg.norm(pca_current_day - pca_next_day, axis=1) / self.T)
-#                 softmax_similarity = similarity / np.sum(similarity)
-#                 # randomly select a cell from the next day based on the softmax similarity
-#                 selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=softmax_similarity)
-#                 # calculate the entropy of the softmax similarity
-#                 entropy = -np.sum(softmax_similarity * np.log(softmax_similarity))
-#                 # print(f"Day {day_value} -> Day {next_day_value}: Entropy: {entropy}")
-#                 # the following shows how diverse the selection can be
-#                 # random_chosen = [np.random.choice(adata_next_day.obs.index, p=softmax_similarity) for _ in range(1000)]
-#                 # diversity = len(set(random_chosen))/len(random_chosen)
-#
-#                 trajectory.append({"cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
-#                                    "pca": torch.Tensor(self.adata[selected_cell_idx].obsm["X_pca"]),
-#                                   "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense()))
-#                                    })
-#                 current_cell_idx = selected_cell_idx
-#
-#             if self.output_embeddings:
-#                 trajectory_embeddings = torch.stack([t["pca"] for t in trajectory]).squeeze(1)
-#                 trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-#                 yield {"inputs_embeds": trajectory_embeddings[:-1],
-#                        "labels_embeds": trajectory_embeddings[1:],
-#                        "trajectory_cell_indices": trajectory_cell_indices,
-#                        }
-#             else:
-#                 trajectory_expression = torch.stack([t["expression"] for t in trajectory]).squeeze(1)
-#                 trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-#                 yield {"inputs_embeds": trajectory_expression[:-1],
-#                        "labels_embeds": trajectory_expression[1:],
-#                        "trajectory_cell_indices": trajectory_cell_indices,
-#                        }
 
 
 def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
@@ -267,13 +204,14 @@ def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
 
 def get_dataset(dataset_name,
                 embedding_size,
+                adata=None,
                 branching_factors=None,  # TODO to be removed
                 steps=None,  # TODO to be removed
-                shuffle=True):
+                shuffle=False):
     if dataset_name == "reprogramming_schiebinger":
         # adata = cr.datasets.reprogramming_schiebinger(subset_to_serum=True)
-        adata = sc.read_h5ad("/home/rohola/codes/scgen/reprogramming_schiebinger_scgen_1000.h5ad")
-        all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size, embedding_key="X_pca", output_embeddings=False)
+        all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size,
+                                               embedding_key="X_pca", output_embeddings=False)
         train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.2, random_seed=42, shuffle=shuffle)
         return train_dataset, eval_dataset
 
