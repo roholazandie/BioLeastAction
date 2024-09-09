@@ -16,12 +16,12 @@ import scanpy as sc
 from sklearn.decomposition import PCA
 
 # Load the checkpoint
-checkpoint_path = "checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
+checkpoint_path = "../checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
 model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
 
-adata = sc.read_h5ad("/home/rohola/codes/BioLeastAction/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+adata = sc.read_h5ad("/reprogramming_schiebinger_scgen_exp_prob.h5ad")
 
 days_values = sorted(list(set(adata.obs["day_numerical"])))
 adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]

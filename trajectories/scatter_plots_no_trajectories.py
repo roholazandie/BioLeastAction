@@ -23,7 +23,7 @@ if dataset == "random_tree_vectors":
 elif dataset == "reprogramming_schiebinger":
     branching_factors = ""
     distribution = ""
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+    adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
     # embedding_size = 50
     # sc.tl.pca(adata, n_comps=embedding_size)
     num_cells = adata.X.shape[0]

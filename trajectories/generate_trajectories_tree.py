@@ -23,7 +23,7 @@ def is_close_to_any(existing_embeds, new_embed, epsilon):
 
 
 # checkpoint_path = "checkpoints/tests/checkpoints_tree_vectors_6:8:2:10:5:3_10/checkpoint-351785"
-checkpoint_path = "checkpoints/tree_vectors_3:4:2_100/checkpoint-689500"
+checkpoint_path = "../checkpoints/tree_vectors_3:4:2_100/checkpoint-689500"
 model = GPT2LeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 

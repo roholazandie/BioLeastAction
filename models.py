@@ -7,6 +7,7 @@ from transformers import GPT2Model, GPT2LMHeadModel, GPT2PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 import torch.nn as nn
+import torch.nn.functional as F
 import wandb
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
@@ -422,6 +423,46 @@ class GPT2AutoencoderLeastActionModel(GenerationMixin, GPT2Model):
         if labels_embeds is not None:
             loss_fct = torch.nn.CrossEntropyLoss()
             loss = loss_fct(decoded_outputs, labels_embeds)
+
+        return CausalLMOutputWithCrossAttentions(
+            loss=loss,
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=decoded_outputs,
+            attentions=transformer_outputs.attentions,
+            cross_attentions=transformer_outputs.cross_attentions,
+        )
+
+
+
+class GPT2VAEModel(GenerationMixin, GPT2Model):
+    def __init__(self, config):
+        super().__init__(config)
+        self.encoder_mu = nn.Linear(config.n_gene, config.hidden_size)
+        self.encoder_logvar = nn.Linear(config.n_gene, config.hidden_size)
+        self.transformer = GPT2Model(config)
+        self.decoder = nn.Linear(config.hidden_size, config.n_gene)
+        self.init_weights()
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def forward(self, inputs_embeds=None, labels_embeds=None, **kwargs):
+        # Encoder step
+        mu = self.encoder_mu(inputs_embeds)
+        logvar = self.encoder_logvar(inputs_embeds)
+        logvar = torch.clamp(logvar, min=-10, max=10)  # Prevents extreme values
+        z = self.reparameterize(mu, logvar)
+
+        # Transformer step
+        transformer_outputs = self.transformer(inputs_embeds=z, **kwargs)
+        decoded_outputs = self.decoder(transformer_outputs.last_hidden_state)
+
+        # Compute the losses
+        recon_loss = F.mse_loss(decoded_outputs, labels_embeds)
+        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        loss = recon_loss + kl_loss
 
         return CausalLMOutputWithCrossAttentions(
             loss=loss,

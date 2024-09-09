@@ -18,11 +18,11 @@ def is_close_to_any(existing_embeds, new_embed, epsilon):
 
 
 
-checkpoint_path = "checkpoints/gpt2autoencoder/checkpoint-87582"
+checkpoint_path = "../checkpoints/gpt2autoencoder/checkpoint-87582"
 model = GPT2AutoencoderLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 
 train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",

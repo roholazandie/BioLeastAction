@@ -5,7 +5,7 @@ import scanpy as sc
 from scipy.linalg import cholesky, solve_triangular
 
 # Load the dataset
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # Define the distance metric ('euclidean' or 'mahalanobis')
 distance_metric = 'euclidean'  # Change to 'euclidean' or 'mahalanobis' as needed
