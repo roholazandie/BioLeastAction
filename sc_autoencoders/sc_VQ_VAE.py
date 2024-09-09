@@ -47,20 +47,21 @@ class VQVAE(nn.Module):
         self.encoder = nn.Sequential(
             nn.Linear(config.layer_sizes[0], config.layer_sizes[1]),
             nn.ReLU(),
-            nn.Linear(config.layer_sizes[1], config.layer_sizes[2]),
-            nn.ReLU()
         )
 
-        self.fc = nn.Linear(config.layer_sizes[2], config.layer_sizes[3])
-        self.quantizer = VectorQuantizer(config.num_embeddings, config.layer_sizes[3], config.commitment_cost)
+        self.fc = nn.Sequential(nn.Linear(config.layer_sizes[1],
+                            config.layer_sizes[2],
+                            ),
+                                nn.ReLU())
+        self.quantizer = VectorQuantizer(config.num_embeddings, config.layer_sizes[2], config.commitment_cost)
 
         self.decoder = nn.Sequential(
-            nn.Linear(config.layer_sizes[3], config.layer_sizes[2]),
-            nn.ReLU(),
             nn.Linear(config.layer_sizes[2], config.layer_sizes[1]),
             nn.ReLU(),
+            nn.Dropout(0.5),  # Encourage sparsity
             nn.Linear(config.layer_sizes[1], config.layer_sizes[0]),
-            nn.Sigmoid()  # To keep the output in the range [0, 1]
+            # nn.LeakyReLU(0.1),
+            nn.Sigmoid()
         )
 
     def encode(self, x):
@@ -74,8 +75,9 @@ class VQVAE(nn.Module):
         z_e = self.encode(x)
         z_q, quantization_loss = self.quantizer(z_e)
         x_recon = self.decode(z_q)
+        x_recon = torch.clamp(x_recon, min=0)
         return x_recon, quantization_loss
 
-def vqvae_loss(recon_x, x, quantization_loss):
+def vqvae_loss(recon_x, x):
     reconstruction_loss = F.mse_loss(recon_x, x, reduction='sum')
-    return reconstruction_loss + quantization_loss
+    return reconstruction_loss
