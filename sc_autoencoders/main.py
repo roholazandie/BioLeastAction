@@ -141,7 +141,7 @@ def train_vqvae(model, train_loader, test_loader, criterion, optimizer, num_epoc
             outputs, quantization_loss = model(inputs)
             reconstruction_loss = criterion(outputs, inputs) # outputs[0, :].detach().cpu().numpy()
 
-            loss = reconstruction_loss + quantization_loss
+            loss = reconstruction_loss + 0.1 * quantization_loss
             loss.backward()
             optimizer.step()
 
@@ -207,15 +207,17 @@ def main(args):
     adata = adata[:, adata.var['highly_variable']].copy()
 
     sc.pp.scale(adata, max_value=10)
-
     X_min_cells = np.min(adata.X, axis=1, keepdims=True)
     X_max_cells = np.max(adata.X, axis=1, keepdims=True)
-
     # Normalize each cell’s expression to be between 0 and 1
     X_normalized_cells = (adata.X - X_min_cells) / np.maximum((X_max_cells - X_min_cells), 1e-8)
 
-    # Step 3: Update the AnnData object with the normalized data
-    adata.X = X_normalized_cells
+    K = 10
+    n_cells = adata.n_obs
+    Y = np.tile(X_normalized_cells[0:K, :], (n_cells//K + 1, 1)) #X_normalized_cells
+    # Y = np.tile(np.array(adata[0:K, :].X.todense()), (n_cells // 10 +1, 1))
+
+    adata.X =  Y[:n_cells, :]#X_normalized_cells
 
     input_size = adata.n_vars
 
@@ -309,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_path', type=str, required=True, help='Path to the dataset file.')
     parser.add_argument('--checkpoint_path', type=str, required=True, help='Path to save the checkpoints.')
     parser.add_argument('--layer_size1', type=int, default=512, help='Size of the first hidden layer.')
-    parser.add_argument('--layer_size2', type=int, default=256, help='Size of the second hidden layer.')
+    parser.add_argument('--layer_size2', type=int, default=512, help='Size of the second hidden layer.')
     parser.add_argument('--layer_size3', type=int, default=128, help='Size of the second hidden layer.')
     parser.add_argument('--layer_norm_epsilon', type=float, default=1e-5, help='Epsilon for layer norm.')
     parser.add_argument('--embed_dropout', type=float, default=0.1, help='Dropout rate for embeddings.')
