@@ -6,7 +6,10 @@ import scanpy as sc
 import scvi
 import seaborn as sns
 import torch
+import numpy as np
 
+torch.manual_seed(0)
+np.random.seed(0)
 
 scvi.settings.seed = 0
 print("Last run with scvi-tools version:", scvi.__version__)
@@ -14,7 +17,7 @@ print("Last run with scvi-tools version:", scvi.__version__)
 
 sc.set_figure_params(figsize=(6, 6), frameon=False)
 sns.set_theme()
-torch.set_float32_matmul_precision("high")
+# torch.set_float32_matmul_precision("high")
 save_dir = tempfile.TemporaryDirectory()
 
 
@@ -36,8 +39,11 @@ sc.pp.highly_variable_genes(
     adata, flavor="seurat_v3", layer="counts", n_top_genes=1000, subset=True
 )
 
-scvi.model.LinearSCVI.setup_anndata(adata, layer="counts")
-model = scvi.model.LinearSCVI(adata, n_latent=10)#, gene_likelihood="zinb")
+# scvi.model.LinearSCVI.setup_anndata(adata, layer="counts")
+# model = scvi.model.LinearSCVI(adata, n_latent=64, gene_likelihood="zinb")
+
+scvi.model.SCVI.setup_anndata(adata, layer="counts")
+model = scvi.model.SCVI(adata, n_latent=64, gene_likelihood="zinb")
 
 model.train(max_epochs=1000, plan_kwargs={"lr": 5e-3}, check_val_every_n_epoch=10)
 
