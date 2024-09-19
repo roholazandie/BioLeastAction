@@ -6,10 +6,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import scanpy as sc
+import scipy.sparse as sp
+
 import torch.nn.functional as F
 
-
-from wandb.integration.keras import WandbCallback
 
 import wandb
 import argparse
@@ -133,45 +133,65 @@ def train_vqvae(model, train_loader, test_loader, criterion, optimizer, num_epoc
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        running_reconstruction_loss = 0.0
+        running_quantization_loss = 0.0
         for data in train_loader:
             inputs = data[0].to(device)
             optimizer.zero_grad()
             outputs, quantization_loss = model(inputs)
-            loss = criterion(outputs, inputs, quantization_loss)
+            reconstruction_loss = criterion(outputs, inputs) # outputs[0, :].detach().cpu().numpy()
+
+            loss = reconstruction_loss + 0.1 * quantization_loss
             loss.backward()
             optimizer.step()
+
+            # Accumulate losses for the epoch
             running_loss += loss.item() * inputs.size(0)
-            #print(f"Reconstruction Loss: {loss-quantization_loss}")
-            #print(f"Quantization Loss: {quantization_loss.item()}")
+            running_reconstruction_loss += reconstruction_loss.item() * inputs.size(0)
+            running_quantization_loss += quantization_loss.item() * inputs.size(0)
         epoch_loss = running_loss / len(train_loader.dataset)
+        epoch_reconstruction_loss = running_reconstruction_loss / len(train_loader.dataset)
+        epoch_quantization_loss = running_quantization_loss / len(train_loader.dataset)
         print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {epoch_loss:.4f}')
 
         # Log the training loss to wandb
         wandb.log({"epoch": epoch + 1, "training_loss": epoch_loss})
+        wandb.log({"epoch": epoch + 1, "reconstruction_loss": epoch_reconstruction_loss})
+        wandb.log({"epoch": epoch + 1, "quantization_loss": epoch_quantization_loss})
 
-        # Evaluate on the test set
-        test_loss = evaluate_vqvae(model, test_loader, criterion, device)
-        print(f'Epoch [{epoch + 1}/{num_epochs}], Test Loss: {test_loss:.4f}')
-        wandb.log({"epoch": epoch + 1, "test_loss": test_loss})
+        if (epoch + 1) % 10 == 0:
+            # Evaluate on the test set
+            test_loss, test_reconstruction_loss, test_quantization_loss = evaluate_vqvae(model, test_loader, criterion, device)
+            print(f'Epoch [{epoch + 1}/{num_epochs}], Test Loss: {test_loss:.4f}')
+            wandb.log({"epoch": epoch + 1, "test_loss": test_loss})
+            wandb.log({"epoch": epoch + 1, "test_reconstruction_loss": test_reconstruction_loss})
+            wandb.log({"epoch": epoch + 1, "test_quantization_loss": test_quantization_loss})
 
         # Save checkpoint every checkpoint_interval epochs
         if (epoch + 1) % checkpoint_interval == 0:
             checkpoint_path_full = os.path.join(checkpoint_path, f'checkpoint_epoch_{epoch + 1}.pth')
             torch.save(model.state_dict(), checkpoint_path_full)
-            wandb.save(checkpoint_path_full)
             print(f'Checkpoint saved at epoch {epoch + 1}')
 
 def evaluate_vqvae(model, data_loader, criterion, device):
     model.eval()
     running_loss = 0.0
+    running_reconstruction_loss = 0.0
+    running_quantization_loss = 0.0
     with torch.no_grad():
         for data in data_loader:
             inputs = data[0].to(device)
             outputs, quantization_loss = model(inputs)
-            loss = criterion(outputs, inputs, quantization_loss)
+            reconstruction_loss = criterion(outputs, inputs)
+            loss = reconstruction_loss + quantization_loss
             running_loss += loss.item() * inputs.size(0)
+            running_reconstruction_loss += reconstruction_loss.item() * inputs.size(0)
+            running_quantization_loss += quantization_loss.item() * inputs.size(0)
+
     epoch_loss = running_loss / len(data_loader.dataset)
-    return epoch_loss
+    epoch_reconstruction_loss = running_reconstruction_loss / len(data_loader.dataset)
+    epoch_quantization_loss = running_quantization_loss / len(data_loader.dataset)
+    return epoch_loss, epoch_reconstruction_loss, epoch_quantization_loss
 
 def main(args):
     # Initialize wandb
@@ -182,6 +202,22 @@ def main(args):
     torch.manual_seed(0)
 
     adata = sc.read_h5ad(args.dataset_path)
+    sc.pp.highly_variable_genes(adata, n_top_genes=1024)
+    # Subset the data to include only the highly variable genes
+    adata = adata[:, adata.var['highly_variable']].copy()
+
+    sc.pp.scale(adata, max_value=10)
+    X_min_cells = np.min(adata.X, axis=1, keepdims=True)
+    X_max_cells = np.max(adata.X, axis=1, keepdims=True)
+    # Normalize each cell’s expression to be between 0 and 1
+    X_normalized_cells = (adata.X - X_min_cells) / np.maximum((X_max_cells - X_min_cells), 1e-8)
+
+    K = 10
+    n_cells = adata.n_obs
+    Y = np.tile(X_normalized_cells[0:K, :], (n_cells//K + 1, 1)) #X_normalized_cells
+    # Y = np.tile(np.array(adata[0:K, :].X.todense()), (n_cells // 10 +1, 1))
+
+    adata.X =  Y[:n_cells, :]#X_normalized_cells
 
     input_size = adata.n_vars
 
@@ -197,7 +233,12 @@ def main(args):
     # Log the config to wandb
     wandb.config.update(config)
 
-    models = {"vanilla": SingleCellAutoEncoder, "VAE": SingleCellVAE, "batch_normalization":SingleCellBatchAutoEncoder, "residual_connections":SingleCellResidualAutoEncoder, "denoising":DenoisingAutoEncoder, "VQ_VAE": VQVAE}
+    models = {"vanilla": SingleCellAutoEncoder,
+              "VAE": SingleCellVAE,
+              "batch_normalization": SingleCellBatchAutoEncoder,
+              "residual_connections":SingleCellResidualAutoEncoder,
+              "denoising":DenoisingAutoEncoder,
+              "VQ_VAE": VQVAE}
 
     model = models[args.model_type](config)
     
@@ -212,14 +253,15 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 
     # Ensure the data is in the correct format
-    tensor_data = torch.tensor(adata.X.toarray(), dtype=torch.float32)
+    X = adata.X.toarray() if sp.issparse(adata.X) else adata.X
+    tensor_data = torch.tensor(X, dtype=torch.float32)
     dataset = TensorDataset(tensor_data)
 
     # Shuffle dataset before splitting
     indices = torch.randperm(len(dataset))
     shuffled_dataset = torch.utils.data.Subset(dataset, indices)
 
-    # Split dataset into training and testing sets (80/20 split)
+    # Split dataset into training and testing sets (90/10 split)
     train_size = int(0.9 * len(shuffled_dataset))
     test_size = len(shuffled_dataset) - train_size
     train_dataset, test_dataset = random_split(shuffled_dataset, [train_size, test_size])
@@ -268,17 +310,17 @@ if __name__ == "__main__":
     parser.add_argument('--model_type', type=str, required=True, help='Name of model type. Choose from vanilla, VAE, batch_normalization, residual_connections, denoising, VQ_VAE')
     parser.add_argument('--dataset_path', type=str, required=True, help='Path to the dataset file.')
     parser.add_argument('--checkpoint_path', type=str, required=True, help='Path to save the checkpoints.')
-    parser.add_argument('--layer_size1', type=int, default=1024, help='Size of the first hidden layer.')
-    parser.add_argument('--layer_size2', type=int, default=256, help='Size of the second hidden layer.')
-    parser.add_argument('--layer_size3', type=int, default=64, help='Size of the second hidden layer.')
+    parser.add_argument('--layer_size1', type=int, default=512, help='Size of the first hidden layer.')
+    parser.add_argument('--layer_size2', type=int, default=512, help='Size of the second hidden layer.')
+    parser.add_argument('--layer_size3', type=int, default=128, help='Size of the second hidden layer.')
     parser.add_argument('--layer_norm_epsilon', type=float, default=1e-5, help='Epsilon for layer norm.')
     parser.add_argument('--embed_dropout', type=float, default=0.1, help='Dropout rate for embeddings.')
-    parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate for the optimizer.')
+    parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate for the optimizer.')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training.')
-    parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs to train.')
-    parser.add_argument('--checkpoint_interval', type=int, default=5, help='Interval for saving checkpoints.')
+    parser.add_argument('--num_epochs', type=int, default=1000000, help='Number of epochs to train.')
+    parser.add_argument('--checkpoint_interval', type=int, default=10, help='Interval for saving checkpoints.')
     parser.add_argument('--num_embeddings', type=int, default=512, help='Number of embeddings for VQ-VAE')
-    parser.add_argument('--commitment_cost', type=float, default=0.01, help='Commitment cost for VQ-VAE')
+    parser.add_argument('--commitment_cost', type=float, default=0.25, help='Commitment cost for VQ-VAE')
 
 
     args = parser.parse_args()

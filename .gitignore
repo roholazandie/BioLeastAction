@@ -178,3 +178,6 @@ cache/
 *.h5ad
 /checkpoints/
 /datasets/
+/data/
+/figures/
+/sc_autoencoders/wandb/
