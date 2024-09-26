@@ -68,19 +68,18 @@ if __name__ == "__main__":
         vocab_size=adata.X.shape[0], # number of cells
     )
 
-    model = GPT2IdLeastActionModel(config)
-    model.set_output_embeddings(torch.Tensor(adata.obsm['X_scgen']))
-    # model = GPT2IdLeastActionModel.from_pretrained("/home/rohola/codes/BioLeastAction/checkpoints/all_cells_vocabulary/checkpoint-10000")
+    # model = GPT2IdLeastActionModel(config)
+    model = GPT2IdLeastActionModel.from_pretrained("/home/rohola/codes/BioLeastAction/checkpoints/vq_transformer/checkpoint-105500")
     model.to(args.device)
 
-    working_dir = f"{args.output_dir}/all_cell_from_pca"
+    working_dir = f"{args.output_dir}/vq_transformer"
 
     training_args = TrainingArguments(
         output_dir=working_dir,
         overwrite_output_dir=True,
         num_train_epochs=args.n_epochs,
-        per_device_train_batch_size=650,
-        per_device_eval_batch_size=350,
+        per_device_train_batch_size=350,
+        per_device_eval_batch_size=300,
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
         weight_decay=1e-10,
@@ -113,8 +112,8 @@ if __name__ == "__main__":
     )
 
     # Train the model
-    trainer.train()
-    # trainer.train(resume_from_checkpoint=True)
+    # trainer.train()
+    trainer.train(resume_from_checkpoint=True)
 
     # Evaluate the model
     trainer.evaluate()

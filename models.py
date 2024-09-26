@@ -11,20 +11,37 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 import torch.nn as nn
 import wandb
 import matplotlib.pyplot as plt
-from transformers import logger
+# from transformers import logger
 from sklearn.metrics.pairwise import cosine_similarity
+from vector_quantize_pytorch import VectorQuantize
+
+from hash_embedding import HashEmbedding
 
 
-
-
-
-class GPT2Model(GPT2PreTrainedModel):
+class GPT2VQModel(GPT2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
         self.embed_dim = config.hidden_size
 
-        self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
+        # Remove the original embedding layer
+        # self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
+
+        # Introduce a new embedding layer (could be optional)
+        # You can choose to use a smaller embedding dimension if desired
+        self.hash_embedding = HashEmbedding(self.embed_dim)
+
+        # Initialize the vector quantizer
+        codebook_size = 52000  # Example codebook size, adjust as needed
+        self.vector_quantizer = VectorQuantize(
+            dim=self.embed_dim,
+            codebook_size=codebook_size,
+            decay=0.8,
+            commitment_weight=1.0,
+            use_cosine_sim=False,
+            # Other parameters as needed
+        )
+
         self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
 
         self.drop = nn.Dropout(config.embd_pdrop)
@@ -40,36 +57,36 @@ class GPT2Model(GPT2PreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-
     def get_input_embeddings(self):
-        return self.wte
+        return self.hash_embedding  # Update to new embedding layer
 
     def set_input_embeddings(self, new_embeddings):
-        self.wte = new_embeddings
+        # Not applicable since hash_embedding doesn't have parameters to set
+        raise NotImplementedError("Cannot set input embeddings when using HashEmbedding.")
+
 
     def _prune_heads(self, heads_to_prune):
-        """
-        Prunes heads of the model. heads_to_prune: dict of {layer_num: list of heads to prune in this layer}
-        """
+        # (Same as before)
         for layer, heads in heads_to_prune.items():
             self.h[layer].attn.prune_heads(heads)
 
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+        # (Same as before)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -104,8 +121,14 @@ class GPT2Model(GPT2PreTrainedModel):
             position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
             position_ids = position_ids.unsqueeze(0)
 
+        # Modify here
         if inputs_embeds is None:
-            inputs_embeds = self.wte(input_ids)
+            # Get initial embeddings from the new embedding layer
+            inputs_embeds = self.hash_embedding(input_ids)
+
+            # Apply vector quantization
+            inputs_embeds, embed_ind, vq_loss = self.vector_quantizer(inputs_embeds)
+
         position_embeds = self.wpe(position_ids)
         hidden_states = inputs_embeds + position_embeds
 
@@ -170,9 +193,6 @@ class GPT2Model(GPT2PreTrainedModel):
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
                 use_cache = False
 
         presents = () if use_cache else None
@@ -247,13 +267,19 @@ class GPT2Model(GPT2PreTrainedModel):
                 if v is not None
             )
 
-        return BaseModelOutputWithPastAndCrossAttentions(
-            last_hidden_state=hidden_states,
-            past_key_values=presents,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attentions,
-            cross_attentions=all_cross_attentions,
-        )
+        # At the end, you might want to include the vector quantization loss
+        if return_dict:
+            return BaseModelOutputWithPastAndCrossAttentions(
+                last_hidden_state=hidden_states,
+                past_key_values=presents,
+                hidden_states=all_hidden_states,
+                attentions=all_self_attentions,
+                cross_attentions=all_cross_attentions,
+            ), vq_loss
+        else:
+            output = (hidden_states, presents, all_hidden_states, all_self_attentions, all_cross_attentions)
+            # Include VQ loss in the outputs if needed
+            return output + (vq_loss,)
 
 
 class GPT2IdLeastActionModel(GPT2PreTrainedModel):
@@ -261,9 +287,9 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.config = config
-        self.transformer = GPT2Model(config)
+        self.transformer = GPT2VQModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.post_init()
+        # self.post_init()
 
     def get_output_embeddings(self):
         return self.lm_head
@@ -339,7 +365,7 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        transformer_outputs = self.transformer(
+        transformer_outputs, vq_loss = self.transformer(
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
@@ -368,6 +394,10 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        vq_weight = 10.0
+        if vq_loss is not None:
+            loss = loss + vq_weight * vq_loss[0]
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
