@@ -68,11 +68,11 @@ if __name__ == "__main__":
         vocab_size=adata.X.shape[0], # number of cells
     )
 
-    # model = GPT2IdLeastActionModel(config)
-    model = GPT2IdLeastActionModel.from_pretrained("/home/rohola/codes/BioLeastAction/checkpoints/vq_transformer/checkpoint-105500")
+    model = GPT2IdLeastActionModel(config)
+    # model = GPT2IdLeastActionModel.from_pretrained("/home/rohola/codes/BioLeastAction/checkpoints/vq_transformer/checkpoint-105500")
     model.to(args.device)
 
-    working_dir = f"{args.output_dir}/vq_transformer"
+    working_dir = f"{args.output_dir}/all_cells_vocabulary"
 
     training_args = TrainingArguments(
         output_dir=working_dir,

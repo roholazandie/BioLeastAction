@@ -287,9 +287,10 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.config = config
-        self.transformer = GPT2VQModel(config)
+        # self.transformer = GPT2VQModel(config)
+        self.transformer = GPT2Model(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        # self.post_init()
+        self.post_init()
 
     def get_output_embeddings(self):
         return self.lm_head
@@ -365,7 +366,7 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        transformer_outputs, vq_loss = self.transformer(
+        transformer_outputs = self.transformer(
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
@@ -395,9 +396,9 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
-        vq_weight = 10.0
-        if vq_loss is not None:
-            loss = loss + vq_weight * vq_loss[0]
+        # vq_weight = 10.0
+        # if vq_loss is not None:
+        #     loss = loss + vq_weight * vq_loss[0]
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]

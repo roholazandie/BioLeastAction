@@ -5,9 +5,11 @@ from matplotlib.colors import LinearSegmentedColormap, to_hex
 from matplotlib.collections import LineCollection
 import matplotlib.pyplot as plt
 import logging
+from matplotlib.animation import FuncAnimation
 import scvelo as scv
 from umap import UMAP
 from anndata import AnnData
+from matplotlib.colors import LinearSegmentedColormap, to_hex, Normalize
 
 
 
@@ -168,5 +170,184 @@ def plot(
             ax.add_artist(legend)
         _position_legend(ax, legend_loc=ixs_legend_loc, handles=[h1, h2])
 
-    # if save is not None:
-    #     save_fig(fig, save)
+    if save is not None:
+        plt.savefig(save, dpi=300)
+
+
+def animate_simulated_trajectories(
+        adata: AnnData = None,
+        sims: List[np.ndarray] = None,
+        basis: str = "umap",
+        cmap: Union[str, LinearSegmentedColormap] = "viridis",
+        linewidth: float = 1.0,
+        linealpha: float = 0.7,
+        ixs_legend_loc: Optional[str] = None,
+        figsize: Optional[Tuple[float, float]] = None,
+        dpi: Optional[int] = None,
+        save: Optional[Union[str, pathlib.Path]] = None,
+        title: Optional[str] = None,  # New parameter for the title
+        **kwargs: Any,
+) -> None:
+    """Plot simulated random walks with an animation that shows lines growing smoothly with a day-based color spectrum.
+
+    Parameters
+    ----------
+    adata
+        Annotated data matrix.
+    sims
+        List of simulated random walks (indices of the points).
+    basis
+        Embedding basis to use for plotting.
+    cmap
+        Colormap to use for the trajectories.
+    linewidth
+        Width of the trajectory lines.
+    linealpha
+        Transparency of the trajectory lines.
+    ixs_legend_loc
+        Legend location for start and stop indices (not used in this version).
+    figsize
+        Figure size.
+    dpi
+        Dots per inch for the figure.
+    save
+        Path to save the animation.
+    title
+        Title of the plot.
+    kwargs
+        Additional keyword arguments for the scatter plot.
+    """
+    # Prepare the colormap
+    if isinstance(cmap, str):
+        cmap = plt.get_cmap(cmap)
+    if not isinstance(cmap, LinearSegmentedColormap):
+        if not hasattr(cmap, "colors"):
+            raise AttributeError("Unable to create a colormap, `cmap` does not have attribute `colors`.")
+        cmap = LinearSegmentedColormap.from_list(
+            "random_walk",
+            colors=cmap.colors,
+            N=max(len(sim) for sim in sims),
+        )
+
+    # Set up the figure and axis
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
+    emb = adata.obsm[f"X_{basis}"]
+
+    # **Set the title**
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+
+    # Prepare the data for animation
+    line_collections = []
+    all_data = []
+    max_total_length = 0
+    max_days = max(len(sim) for sim in sims)  # Maximum number of days
+
+    for sim in sims:
+        x = emb[sim][:, 0]
+        y = emb[sim][:, 1]
+        points = np.array([x, y]).T
+        # Compute segments
+        segments = np.array([points[:-1], points[1:]]).transpose(1, 0, 2)
+        # Compute lengths of each segment
+        segment_lengths = np.sqrt(np.sum((points[1:] - points[:-1]) ** 2, axis=1))
+        cumulative_lengths = np.insert(np.cumsum(segment_lengths), 0, 0)
+        total_length = cumulative_lengths[-1]
+        max_total_length = max(max_total_length, total_length)
+
+        n_seg = len(segments)
+        # Assign colors to segments based on days
+        day_numbers = np.arange(1, n_seg + 1)
+        norm = Normalize(vmin=1, vmax=max_days)
+        segment_colors = cmap(norm(day_numbers))
+
+        # Initialize LineCollection with empty data
+        lc = LineCollection([], linewidths=linewidth, alpha=linealpha, zorder=2)
+        ax.add_collection(lc)
+        line_collections.append(lc)
+
+        # Store all data for this sim
+        all_data.append({
+            'segments': segments,
+            'segment_lengths': segment_lengths,
+            'cumulative_lengths': cumulative_lengths,
+            'total_length': total_length,
+            'segment_colors': segment_colors,
+            'day_numbers': day_numbers,
+            'norm': norm,
+        })
+
+    # Remove start and end point plotting since we're now using a colorbar
+
+    # Add colorbar representing days
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=1, vmax=max_days))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.03, pad=0.04)
+    cbar.set_label('Day')
+
+    # Animation functions
+    total_frames = 500  # Adjust this value for smoother animation
+
+    def init():
+        """Initialize the animation."""
+        for lc in line_collections:
+            lc.set_segments([])
+            lc.set_color([])
+        return line_collections
+
+    def animate(frame):
+        """Update the plot for each frame."""
+        # Compute current length fraction
+        progress = frame / total_frames
+        current_length = progress * max_total_length
+
+        for lc, data in zip(line_collections, all_data):
+            # Determine which segments are included up to current_length
+            cumulative_lengths = data['cumulative_lengths']
+            segments = data['segments']
+            colors = data['segment_colors']
+            n_seg = len(segments)
+            # Find segments that are fully included
+            indices = np.where(cumulative_lengths <= current_length)[0]
+
+            # Initialize included_segments and included_colors
+            included_segments = np.empty((0, 2, 2))
+            included_colors = []
+
+            # Handle fully included segments
+            if len(indices) >= 2:
+                # Fully included segments exist
+                included_segments = segments[:indices[-1]]
+                included_colors = list(colors[:indices[-1]])  # Convert to list
+
+            # Check if there's a partial segment
+            if len(indices) >= 1 and indices[-1] < n_seg:
+                # Partial segment
+                i = indices[-1]
+                seg_start = segments[i, 0]
+                seg_end = segments[i, 1]
+                seg_length = data['segment_lengths'][i]
+                length_in_segment = current_length - cumulative_lengths[i]
+                frac = length_in_segment / seg_length if seg_length > 0 else 0
+                # Interpolate point along the segment
+                interp_point = seg_start + frac * (seg_end - seg_start)
+                # Include the partial segment
+                partial_segment = np.array([[seg_start, interp_point]])
+                included_segments = np.vstack([included_segments, partial_segment])
+                included_colors.append(colors[i])
+
+            # Update LineCollection
+            lc.set_segments(included_segments)
+            lc.set_color(included_colors)
+        return line_collections
+
+    # Create the animation
+    anim = FuncAnimation(fig, animate, init_func=init, frames=total_frames + 1,
+                         interval=30, blit=True)
+
+    # Save or display the animation
+    if save is not None:
+        anim.save(save, dpi=300, writer='ffmpeg')
+    else:
+        plt.show()
