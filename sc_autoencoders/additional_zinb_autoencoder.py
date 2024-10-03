@@ -20,7 +20,7 @@ class scVAE(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dim, additional_features_dim, distribution='zinb'):
         super(scVAE, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim+1, hidden_dim, bias=True),
+            nn.Linear(input_dim+additional_features_dim, hidden_dim, bias=True),
                                      nn.BatchNorm1d(hidden_dim, eps=0.001),
                                      nn.ReLU(),
                                      nn.Dropout(0.1)
@@ -29,7 +29,7 @@ class scVAE(nn.Module):
         self.mu_encoder = nn.Linear(hidden_dim, latent_dim)
         self.var_encoder = nn.Linear(hidden_dim, latent_dim)
 
-        self.decoder = nn.Sequential(nn.Linear(latent_dim+1, hidden_dim),
+        self.decoder = nn.Sequential(nn.Linear(latent_dim+additional_features_dim, hidden_dim),
                                      nn.BatchNorm1d(hidden_dim, eps=0.001),
                                      nn.ReLU())
         self.mu_decoder = nn.Sequential(nn.Linear(hidden_dim, input_dim, bias=True),
@@ -42,7 +42,7 @@ class scVAE(nn.Module):
     def encode(self, x, additional_features):
         x = x.float()
         additional_features = additional_features.float()
-        h1 = self.encoder(torch.cat([x, additional_features[:,7:8]], dim=-1))
+        h1 = self.encoder(torch.cat([x, additional_features], dim=-1))
         q_mu = self.mu_encoder(h1)
         q_var = torch.exp(self.var_encoder(h1)) + 1e-4
         q_z = Normal(q_mu, q_var.sqrt())
@@ -52,7 +52,7 @@ class scVAE(nn.Module):
     def decode(self, z, library,additional_features):
         z = z.float()
         additional_features = additional_features.float()
-        h = self.decoder(torch.cat([z, additional_features[:,7:8]], dim=-1)) # with softplus
+        h = self.decoder(torch.cat([z, additional_features], dim=-1)) # with softplus
         mu = self.mu_decoder(h)
         dropout_logits = self.dropout_decoder(h) # this should stay as it is
         x_rate = torch.exp(library) * mu
