@@ -14,7 +14,7 @@ model.to('cuda:0')
 cells_embeddings = model.transformer.wte.weight.data.cpu().numpy()
 
 # Load the dataset
-adata = sc.read_h5ad("/home/rohola/codes/BioLeastAction/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+adata = sc.read_h5ad("/data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
 
 # Get indices for days 1 and 17
 day_1_idxs = (adata.obs['day'].values == 0.0).nonzero()[0]

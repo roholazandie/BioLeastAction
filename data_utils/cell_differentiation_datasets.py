@@ -89,7 +89,7 @@ class TreeVectorsDataset(Dataset):
 
 
 class AnnDataTrajectoryDataset(Dataset):
-    def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9, output_embeddings=True):
+    def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9):
         self.adata = adata
         if embedding_key is None and 'X_pca' not in self.adata.obsm.keys():
             sc.tl.pca(self.adata, n_comps=embedding_size)
@@ -109,7 +109,11 @@ class AnnDataTrajectoryDataset(Dataset):
         self.embedding_key = embedding_key
         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
         self.T = T
-        self.output_embeddings = output_embeddings
+
+        num_cells = len(self.adata)
+        self.cell_types = list(set(self.adata.obs['cell_sets']))
+        self.cell_types_to_idx = {cell_type: idx + num_cells for idx, cell_type in enumerate(self.cell_types)}
+
 
     def __len__(self) -> int:
         return len(self.adata)
@@ -123,7 +127,8 @@ class AnnDataTrajectoryDataset(Dataset):
         trajectory.append({
             "cell_idx": self.adata.obs.index.get_loc(cell_idx),
             self.embedding_key: torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key]),
-            "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense()))
+            "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense())),
+            "cell_type": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()]
         })
         current_cell_idx = cell_idx
 
@@ -142,28 +147,19 @@ class AnnDataTrajectoryDataset(Dataset):
             trajectory.append({
                 "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
                 self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
-                "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense()))
+                "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
+                "cell_type": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()]
             })
             current_cell_idx = selected_cell_idx
 
-        if self.output_embeddings:
-            trajectory_embeddings = torch.stack([t[self.embedding_key] for t in trajectory]).squeeze(1)
-            trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-            return {
-                # "inputs_embeds": trajectory_embeddings[:-1],
-                # "labels_embeds": trajectory_embeddings[1:],
-                "input_ids": trajectory_cell_indices,
-                "label_ids": trajectory_cell_indices
-            }
-        else:
-            trajectory_expression = torch.stack([t["expression"] for t in trajectory]).squeeze(1)
-            trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-            return {
-                # "inputs_embeds": trajectory_expression[:-1],
-                # "labels_embeds": trajectory_expression[1:],
-                "input_ids": trajectory_cell_indices,
-                "label_ids": trajectory_cell_indices
-            }
+        trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
+        cell_types = [t["cell_type"] for t in trajectory]
+        return {
+            "input_ids": trajectory_cell_indices,
+            "label_ids": trajectory_cell_indices,
+            "token_type_ids": cell_types,
+        }
+
 
 
 def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
@@ -211,8 +207,8 @@ def get_dataset(dataset_name,
     if dataset_name == "reprogramming_schiebinger":
         # adata = cr.datasets.reprogramming_schiebinger(subset_to_serum=True)
         all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size,
-                                               embedding_key="X_pca", output_embeddings=False)
-        train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.2, random_seed=42, shuffle=shuffle)
+                                               embedding_key="X_pca")
+        train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.1, random_seed=42, shuffle=shuffle)
         return train_dataset, eval_dataset
 
     elif dataset_name == "numbers":
