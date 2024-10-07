@@ -1,3 +1,5 @@
+import time
+
 import torch
 import cellrank as cr
 import matplotlib.pyplot as plt
@@ -9,6 +11,7 @@ from plots.plot_trajectories import plot
 from torch.utils.data import IterableDataset
 from torch.utils.data.dataset import Dataset, Subset
 import torch.nn as nn
+from sklearn.neighbors import KDTree
 
 
 def generate_random_vector(dimension, step_size, distribution):
@@ -91,9 +94,9 @@ class TreeVectorsDataset(Dataset):
 class AnnDataTrajectoryDataset(Dataset):
     def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9):
         self.adata = adata
-        if embedding_key is None and 'X_pca' not in self.adata.obsm.keys():
+        if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or embedding_size != self.adata.obsm['X_pca'].shape[1]:
             sc.tl.pca(self.adata, n_comps=embedding_size)
-            self.adata.write("reprogramming_schiebinger_serum.h5ad")
+            # self.adata.write("reprogramming_schiebinger_serum.h5ad")
 
         if embedding_key == "expression_probability" and "expression_probability" not in self.adata.obsm.keys():
             sc.pp.highly_variable_genes(self.adata, flavor='seurat', n_top_genes=embedding_size)
@@ -110,9 +113,9 @@ class AnnDataTrajectoryDataset(Dataset):
         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
         self.T = T
 
-        num_cells = len(self.adata)
+        # num_cells = len(self.adata)
         self.cell_types = list(set(self.adata.obs['cell_sets']))
-        self.cell_types_to_idx = {cell_type: idx + num_cells for idx, cell_type in enumerate(self.cell_types)}
+        self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
 
 
     def __len__(self) -> int:
@@ -128,7 +131,7 @@ class AnnDataTrajectoryDataset(Dataset):
             "cell_idx": self.adata.obs.index.get_loc(cell_idx),
             self.embedding_key: torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key]),
             "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense())),
-            "cell_type": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()]
+            "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()]
         })
         current_cell_idx = cell_idx
 
@@ -148,16 +151,114 @@ class AnnDataTrajectoryDataset(Dataset):
                 "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
                 self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
                 "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
-                "cell_type": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()]
+                "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()]
             })
             current_cell_idx = selected_cell_idx
 
         trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-        cell_types = [t["cell_type"] for t in trajectory]
+        cell_types_ids = [t["cell_type_ids"] for t in trajectory]
+        cell_embeddings = torch.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
         return {
             "input_ids": trajectory_cell_indices,
             "label_ids": trajectory_cell_indices,
-            "token_type_ids": cell_types,
+            "cell_type_ids": cell_types_ids,
+            "cell_embeddings": cell_embeddings
+        }
+
+
+
+class AnnDataTrajectoryDatasetFast(Dataset):
+    def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9, k_neighbors=100):
+        self.adata = adata
+        if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or embedding_size != self.adata.obsm['X_pca'].shape[1]:
+            sc.tl.pca(self.adata, n_comps=embedding_size)
+            self.adata.write("reprogramming_schiebinger_serum.h5ad")
+
+        if embedding_key == "expression_probability" and "expression_probability" not in self.adata.obsm.keys():
+            sc.pp.highly_variable_genes(self.adata, flavor='seurat', n_top_genes=embedding_size)
+            self.adata = self.adata[:, self.adata.var['highly_variable']]
+            self.adata = self.adata[:, :embedding_size]
+            X_dense = np.array(self.adata.X.todense())
+            self.adata.obsm["expression_probability"] = X_dense / np.sum(X_dense, axis=1)[:, None]
+            self.adata.write("reprogramming_schiebinger_scgen_exp_prob.h5ad")
+
+        self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
+        self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
+
+        self.embedding_key = embedding_key
+        self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
+        self.T = T
+        self.k_neighbors = k_neighbors
+
+        self.cell_types = list(set(self.adata.obs['cell_sets']))
+        self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
+
+        # Build KDTree for each day's PCA embeddings
+        self.day_to_kdtree = {}
+        self.day_to_pca = {}
+        self.day_to_indices = {}
+        for day_value in self.days_values:
+            adata_day = self.adata[self.adata.obs["day_numerical"] == day_value, :]
+            pca_day = np.array(adata_day.obsm["X_pca"])
+            self.day_to_pca[day_value] = pca_day
+            self.day_to_kdtree[day_value] = KDTree(pca_day)
+            self.day_to_indices[day_value] = np.array(adata_day.obs.index)
+
+
+    def __len__(self) -> int:
+        return len(self.adata)
+
+    def __getitem__(self, index: int):
+        np.random.seed(index)  # Seed for reproducibility
+
+        trajectory = []
+        adata_first_day = self.adata[self.adata.obs["day_numerical"] == self.days_values[0], :]
+        cell_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
+        trajectory.append({
+            "cell_idx": self.adata.obs.index.get_loc(cell_idx),
+            self.embedding_key: torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key]),
+            "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense())),
+            "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()]
+        })
+        current_cell_idx = cell_idx
+
+        for i, day_value in enumerate(self.days_values):
+            if i == len(self.days_values) - 1:
+                break
+
+            pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"])
+            next_day_value = self.days_values[i + 1]
+
+            # Query KDTree to get k nearest neighbors
+            k_neighbors = min(self.k_neighbors, len(self.day_to_pca[next_day_value]))
+            distances, indices = self.day_to_kdtree[next_day_value].query(pca_current_day, k=k_neighbors)
+            distances = distances[0]
+            indices = indices[0]
+
+            # Compute similarities
+            similarity = np.exp(-distances / self.T)
+            softmax_similarity = similarity / np.sum(similarity)
+
+            # Sample from the k nearest neighbors
+            selected_idx_in_pca = np.random.choice(len(indices), p=softmax_similarity)
+            selected_cell_idx = self.day_to_indices[next_day_value][indices[selected_idx_in_pca]]
+
+            trajectory.append({
+                "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
+                self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
+                "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
+                "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()]
+            })
+            current_cell_idx = selected_cell_idx
+
+        trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
+        cell_types_ids = [t["cell_type_ids"] for t in trajectory]
+        embedding_values = torch.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
+        return {
+            "input_ids": trajectory_cell_indices,
+            "label_ids": trajectory_cell_indices,
+            "cell_type_ids": cell_types_ids,
+            "cell_embeddings": embedding_values
         }
 
 
@@ -206,8 +307,8 @@ def get_dataset(dataset_name,
                 shuffle=False):
     if dataset_name == "reprogramming_schiebinger":
         # adata = cr.datasets.reprogramming_schiebinger(subset_to_serum=True)
-        all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size,
-                                               embedding_key="X_pca")
+        # all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size, embedding_key="X_pca")
+        all_dataset = AnnDataTrajectoryDatasetFast(adata, embedding_size=embedding_size, embedding_key="X_pca", k_neighbors=5000)
         train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.1, random_seed=42, shuffle=shuffle)
         return train_dataset, eval_dataset
 
@@ -226,8 +327,13 @@ def get_dataset(dataset_name,
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("/home/rohola/codes/cellrank_playground/reprogramming_schiebinger_forced_directed2.h5ad")
-    dataset = AnnDataTrajectoryDataset(adata, output_embeddings=False)
-    for item in dataset:
-        print(item)
-        break
+    adata = sc.read_h5ad("../data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+    dataset = AnnDataTrajectoryDataset(adata, embedding_key="X_pca")
+    # dataset = AnnDataTrajectoryDatasetFast(adata, embedding_key="X_pca", T=0.9, k_neighbors=5000)
+    t1 = time.time()
+    for i, item in enumerate(dataset):
+        print(item) # 94.97 seconds
+        if i == 300: # 62.48
+            break
+
+    print(f"Time taken: {time.time() - t1:.2f} seconds")

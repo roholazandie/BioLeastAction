@@ -24,7 +24,8 @@ checkpoint_path = "checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify
 model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+# adata = sc.read_h5ad("data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
 
 train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
@@ -94,7 +95,6 @@ for i, trajectory in enumerate(train_dataset):
 
 # adata.write("reprogramming_schiebinger_force_directed.h5ad")
 
-adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
 
 # generated_trajectories_ids = np.load("data/generated_trajectories_ids.npy", allow_pickle=True)
 # real_trajectories_ids = np.load("real_trajectories_ids.npy", allow_pickle=True)
@@ -103,7 +103,6 @@ adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
 cmap = "coolwarm" if len(real_trajectories_ids) > 1 else "gnuplot"
 
 if do_animation:
-
     animate_simulated_trajectories(adata=adata,
          sims=real_trajectories_ids,
          basis='X_draw_graph_fa',

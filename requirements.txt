@@ -10,3 +10,4 @@ wandb
 python-igraph
 cython
 fa2_modified
+vector_quantize_pytorch
