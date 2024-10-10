@@ -92,7 +92,7 @@ class TreeVectorsDataset(Dataset):
 
 
 class AnnDataTrajectoryDataset(Dataset):
-    def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9):
+    def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.8):
         self.adata = adata
         if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or embedding_size != self.adata.obsm['X_pca'].shape[1]:
             sc.tl.pca(self.adata, n_comps=embedding_size)
@@ -121,6 +121,27 @@ class AnnDataTrajectoryDataset(Dataset):
     def __len__(self) -> int:
         return len(self.adata)
 
+    def compute_similarity(self, pca_current_day, pca_next_day):
+        # Compute similarity
+        pca_next_day = pca_next_day / np.linalg.norm(pca_next_day, axis=1)[:, None]
+        norm_distances = np.clip(np.linalg.norm(pca_current_day - pca_next_day, axis=1), 1e-6, 1e2)
+        # apply Log-Sum-Exp Trick
+        max_val = np.max(-norm_distances / self.T)  # Find the maximum to subtract for numerical stability
+        print(f"Norm min: {np.min(max_val)}, Norm max: {np.max(max_val)}, Norm mean: {np.mean(max_val)}")
+        similarity = np.exp((-norm_distances / self.T) - max_val)  # Apply the shift
+        print(f"Similarity min: {np.min(similarity)}, "
+              f"Similarity max: {np.max(similarity)}, "
+              f"Similarity mean: {np.mean(similarity)}")
+        if np.any(np.isnan(similarity)):
+            print("Found NaNs in similarity")
+        softmax_similarity = similarity / np.sum(similarity)
+        if np.any(np.isnan(softmax_similarity)):
+            print("Found NaNs in softmax_similarity")
+        print(f"Softmax min: {np.min(softmax_similarity)}, "
+              f"Softmax max: {np.max(softmax_similarity)},"
+              f" Softmax sum: {np.sum(softmax_similarity)}")
+        return softmax_similarity
+
     def __getitem__(self, index: int):
         np.random.seed(index)  # Seed for reproducibility
 
@@ -135,16 +156,22 @@ class AnnDataTrajectoryDataset(Dataset):
         })
         current_cell_idx = cell_idx
 
-        for i, day_value in enumerate(self.days_values):
-            if i == len(self.days_values) - 1:
+        for iter, day_value in enumerate(self.days_values):
+            if iter == len(self.days_values) - 1:
                 break
 
+            # Get PCA embeddings for the current cell
             pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"].tolist())
-            next_day_value = self.days_values[i + 1]
+            pca_current_day = pca_current_day / np.linalg.norm(pca_current_day)
+            # Get PCA embeddings for the next day
+            next_day_value = self.days_values[iter + 1]
             adata_next_day = self.adata[self.adata.obs["day_numerical"] == next_day_value, :]
             pca_next_day = adata_next_day.obsm["X_pca"]
-            similarity = np.exp(-np.linalg.norm(pca_current_day - pca_next_day, axis=1) / self.T)
-            softmax_similarity = similarity / np.sum(similarity)
+
+            # Compute similarity
+            softmax_similarity = self.compute_similarity(pca_current_day, pca_next_day)
+
+            # Sample from probabilities
             selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=softmax_similarity)
 
             trajectory.append({
@@ -164,7 +191,6 @@ class AnnDataTrajectoryDataset(Dataset):
             "cell_type_ids": cell_types_ids,
             "cell_embeddings": cell_embeddings
         }
-
 
 
 class AnnDataTrajectoryDatasetFast(Dataset):
@@ -208,6 +234,19 @@ class AnnDataTrajectoryDatasetFast(Dataset):
     def __len__(self) -> int:
         return len(self.adata)
 
+    def compute_similarities(self, next_day_value, pca_current_day):
+        # Query KDTree to get k nearest neighbors
+        k_neighbors = min(self.k_neighbors, len(self.day_to_pca[next_day_value]))
+        distances, indices = self.day_to_kdtree[next_day_value].query(pca_current_day, k=k_neighbors)
+        distances = distances[0]
+        indices = indices[0]
+        # apply Log-Sum-Exp Trick
+        max_val = np.max(-distances / self.T)  # Find the maximum to subtract for numerical stability
+        # Compute similarities
+        similarity = np.exp((-distances / self.T) - max_val)
+        softmax_similarity = similarity / np.sum(similarity)
+        return indices, softmax_similarity
+
     def __getitem__(self, index: int):
         np.random.seed(index)  # Seed for reproducibility
 
@@ -222,26 +261,19 @@ class AnnDataTrajectoryDatasetFast(Dataset):
         })
         current_cell_idx = cell_idx
 
-        for i, day_value in enumerate(self.days_values):
-            if i == len(self.days_values) - 1:
+        for iter, day_value in enumerate(self.days_values):
+            if iter == len(self.days_values) - 1:
                 break
 
             pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"])
-            next_day_value = self.days_values[i + 1]
+            next_day_value = self.days_values[iter + 1]
 
-            # Query KDTree to get k nearest neighbors
-            k_neighbors = min(self.k_neighbors, len(self.day_to_pca[next_day_value]))
-            distances, indices = self.day_to_kdtree[next_day_value].query(pca_current_day, k=k_neighbors)
-            distances = distances[0]
-            indices = indices[0]
-
-            # Compute similarities
-            similarity = np.exp(-distances / self.T)
-            softmax_similarity = similarity / np.sum(similarity)
+            indices, softmax_similarity = self.compute_similarities(next_day_value, pca_current_day)
 
             # Sample from the k nearest neighbors
-            selected_idx_in_pca = np.random.choice(len(indices), p=softmax_similarity)
-            selected_cell_idx = self.day_to_indices[next_day_value][indices[selected_idx_in_pca]]
+            selected_cell_idx = np.random.choice(indices, p=softmax_similarity)
+            # Now get the actual index of the selected cell
+            selected_cell_idx = self.day_to_indices[next_day_value][selected_cell_idx]
 
             trajectory.append({
                 "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
@@ -260,7 +292,6 @@ class AnnDataTrajectoryDatasetFast(Dataset):
             "cell_type_ids": cell_types_ids,
             "cell_embeddings": embedding_values
         }
-
 
 
 def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
@@ -302,13 +333,24 @@ def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
 def get_dataset(dataset_name,
                 embedding_size,
                 adata=None,
+                T=0.8,
                 branching_factors=None,  # TODO to be removed
                 steps=None,  # TODO to be removed
                 shuffle=False):
     if dataset_name == "reprogramming_schiebinger":
-        # adata = cr.datasets.reprogramming_schiebinger(subset_to_serum=True)
-        # all_dataset = AnnDataTrajectoryDataset(adata, embedding_size=embedding_size, embedding_key="X_pca")
-        all_dataset = AnnDataTrajectoryDatasetFast(adata, embedding_size=embedding_size, embedding_key="X_pca", k_neighbors=5000)
+        all_dataset = AnnDataTrajectoryDataset(adata,
+                                               embedding_size=embedding_size,
+                                               embedding_key="X_pca",
+                                               T=T)
+        train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.1, random_seed=42, shuffle=shuffle)
+        return train_dataset, eval_dataset
+
+    elif dataset_name == "reprogramming_schiebinger_fast":
+        all_dataset = AnnDataTrajectoryDatasetFast(adata,
+                                                   embedding_size=embedding_size,
+                                                   embedding_key="X_pca",
+                                                   k_neighbors=20000,
+                                                   T=T)
         train_dataset, eval_dataset = split_dataset(all_dataset, test_size=0.1, random_seed=42, shuffle=shuffle)
         return train_dataset, eval_dataset
 

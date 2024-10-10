@@ -89,10 +89,6 @@ if __name__ == "__main__":
         per_device_eval_batch_size=50, # 300
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
-        # weight_decay=1e-10,
-        # max_grad_norm=0.1,
-        # warmup_ratio=0.1,
-        # lr_scheduler_type="cosine",
         logging_dir=working_dir,
         dataloader_num_workers=20,
         logging_steps=10,
