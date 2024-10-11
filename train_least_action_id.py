@@ -71,8 +71,8 @@ if __name__ == "__main__":
         vocab_size=num_cells + num_cell_types, # number of cells and cell types
     )
 
-    # model = GPT2IdLeastActionModel(config)
-    model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
+    model = GPT2IdLeastActionModel(config)
+    # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
     model.to(args.device)
 
     working_dir = f"{args.output_dir}/all_cells_vocabulary_cell_type"
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         output_dir=working_dir,
         overwrite_output_dir=True,
         num_train_epochs=args.n_epochs,
-        per_device_train_batch_size=350, #350
+        per_device_train_batch_size=50, #350
         per_device_eval_batch_size=250, # 300
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
@@ -115,8 +115,8 @@ if __name__ == "__main__":
     )
 
     # Train the model
-    # trainer.train()
-    trainer.train(resume_from_checkpoint=True)
+    trainer.train()
+    # trainer.train(resume_from_checkpoint=True)
 
     # Evaluate the model
     trainer.evaluate()

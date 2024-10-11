@@ -14,7 +14,7 @@ checkpoint_path = "checkpoints/gpt2autoencoder/checkpoint-87582"
 model = GPT2AutoencoderLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 adata.obs['generated'] = False
 days_values = sorted(list(set(adata.obs["day_numerical"])))
 adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]

@@ -6,7 +6,7 @@ import scanpy as sc
 import numpy as np
 
 # Load the model
-checkpoint_path = "checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
+checkpoint_path = "../checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
 model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 

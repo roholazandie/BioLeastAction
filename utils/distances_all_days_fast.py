@@ -7,7 +7,7 @@ from sklearn.metrics import pairwise_distances
 import multiprocessing as mp
 
 # Load the dataset
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # Define the distance metric ('euclidean' or 'mahalanobis')
 distance_metric = 'mahalanobis'  # Change to 'euclidean' or 'mahalanobis' as needed

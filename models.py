@@ -1,22 +1,16 @@
 from typing import Optional, Tuple, Union
 
-import numpy as np
 import torch
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 
-from generate_utils import GenerationMixin
-from transformers import GPT2Model, GPT2LMHeadModel, GPT2PreTrainedModel
+from utils.generate_utils import GenerationMixin
+from transformers import GPT2Model, GPT2PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions, BaseModelOutputWithPastAndCrossAttentions
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss
 import torch.nn as nn
-import torch.nn.functional as F
-import wandb
-import matplotlib.pyplot as plt
 # from transformers import logger
-from sklearn.metrics.pairwise import cosine_similarity
 from vector_quantize_pytorch import VectorQuantize
-import logging
-from hash_embedding import HashEmbedding
+from utils.hash_embedding import HashEmbedding
 
 # logger = logging.get_logger(__name__)
 
