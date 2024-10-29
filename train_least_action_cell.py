@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--eval_batch_size", type=int, default=80, help="Evaluation batch size")
     parser.add_argument("--learning_rate", type=float, default=5e-5, help="Learning rate")
     parser.add_argument("--hidden_size", type=int, default=768, help="Hidden size")
-    parser.add_argument("--num_hidden_layers", type=int, default=12, help="Number of hidden layers")
+    parser.add_argument("--num_hidden_layers", type=int, default=6, help="Number of hidden layers")
     parser.add_argument("--num_attention_heads", type=int, default=12, help="Number of attention heads")
     parser.add_argument("--shard_size", type=int, default=10000, help="Shard size")
     parser.add_argument("--train_data_path", type=str, help="Path to the training data")
@@ -73,6 +73,7 @@ if __name__ == "__main__":
         n_head=args.num_attention_heads,
         vocab_size=num_cells,
         cell_type_vocab_size=num_cell_types,
+        use_cache=False,
     )
 
     model = GPT2CellLeastActionModel(config)

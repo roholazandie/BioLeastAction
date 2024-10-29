@@ -8,7 +8,7 @@ from scipy.linalg import cholesky, solve_triangular
 adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # Define the distance metric ('euclidean' or 'mahalanobis')
-distance_metric = 'mahalanobis'  # Change to 'euclidean' or 'mahalanobis' as needed
+distance_metric = 'euclidean'  # Change to 'euclidean' or 'mahalanobis' as needed
 
 # Perform PCA for dimensionality reduction (optional, speeds up computation)
 n_components = 50  # Set the number of principal components to retain

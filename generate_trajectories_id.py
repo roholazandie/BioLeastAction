@@ -29,7 +29,7 @@ adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
 
 train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
-                                              embedding_size=712,
+                                              embedding_size=768,
                                               shuffle=True)
 
 

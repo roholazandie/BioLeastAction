@@ -10,11 +10,11 @@ import multiprocessing as mp
 adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # Define the distance metric ('euclidean' or 'mahalanobis')
-distance_metric = 'mahalanobis'  # Change to 'euclidean' or 'mahalanobis' as needed
+distance_metric = 'euclidean'  # Change to 'euclidean' or 'mahalanobis' as needed
 
 # Perform PCA for dimensionality reduction (optional, speeds up computation)
 n_components = 768  # Set the number of principal components to retain
-sc.tl.pca(adata, n_comps=n_components)
+# sc.tl.pca(adata, n_comps=n_components)
 
 # Get sorted list of unique days
 days_values = sorted(list(set(adata.obs["day_numerical"])))
@@ -23,12 +23,13 @@ days_values = sorted(list(set(adata.obs["day_numerical"])))
 distance_matrix = np.zeros((len(days_values), len(days_values)))
 
 # Sample size for faster computation
-sample_size = 20000  # Adjust sample size as needed
+sample_size = 1000  # Adjust sample size as needed
 
 # Function to calculate distances between two sets of cells
 def calculate_distances(X1, X2, metric):
     if metric == 'euclidean':
-        distances = pairwise_distances(X1, X2, metric='euclidean')
+        # distances = pairwise_distances(X1, X2, metric='euclidean')
+        distances = np.dot(X1, X2.T)
     elif metric == 'mahalanobis':
         covariance_matrix = np.cov(np.vstack((X1, X2)), rowvar=False)
         L = cholesky(covariance_matrix, lower=True)
@@ -45,11 +46,11 @@ def process_day_pairs(i, j):
     adata_day_j = adata[adata.obs["day_numerical"] == day_value_j, :]
 
     # Sample cells for faster computation
-    # X_i = np.array(adata_day_i.obsm["X_pca"])
-    # X_j = np.array(adata_day_j.obsm["X_pca"])
+    X_i = np.array(adata_day_i.obsm["X_pca"])
+    X_j = np.array(adata_day_j.obsm["X_pca"])
 
-    X_i = np.array(adata_day_i.X.todense())
-    X_j = np.array(adata_day_j.X.todense())
+    # X_i = np.array(adata_day_i.X.todense())
+    # X_j = np.array(adata_day_j.X.todense())
 
     # If the number of cells is large, downsample
     if X_i.shape[0] > sample_size:
@@ -62,7 +63,8 @@ def process_day_pairs(i, j):
     return (i, j, mean_distance)
 
 # Parallel processing setup
-pool = mp.Pool(mp.cpu_count())
+pool = mp.Pool(mp.cpu_count()-5)
+# pool = mp.Pool(1)
 
 results = []
 for i in range(len(days_values)):
@@ -78,7 +80,7 @@ for res in results:
     distance_matrix[j, i] = mean_distance  # Symmetric matrix
 
 # Save the distance matrix
-np.save("distance_matrix.npy", distance_matrix)
+# np.save("distance_matrix.npy", distance_matrix)
 
 # Plot the distance matrix
 plt.figure(figsize=(10, 8))
@@ -92,5 +94,5 @@ plt.ylabel('Day')
 plt.tight_layout()
 plt.show()
 # Save the figure
-plt.savefig("distance_matrix.png")
+plt.savefig("distance_matrix_euclidean.png")
 plt.close()

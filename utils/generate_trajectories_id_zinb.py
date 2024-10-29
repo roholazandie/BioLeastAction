@@ -30,7 +30,7 @@ sc.pp.highly_variable_genes(adata, flavor="seurat_v3", n_top_genes=1000, subset=
 
 train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
-                                              embedding_size=712,
+                                              embedding_size=768,
                                               shuffle=True)
 adata.layers["counts"] = adata.X.copy()
 adata.raw = adata

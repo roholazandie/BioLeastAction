@@ -8,6 +8,10 @@ import scanpy as sc
 import wandb
 
 
+def compute_metrics(preds, labels):
+    print("Computing metrics")
+    return {}
+
 def set_seed(seed: int) -> None:
     """Set random seed
 
@@ -28,7 +32,7 @@ def parse_args():
     parser.add_argument("--eval_batch_size", type=int, default=80, help="Evaluation batch size")
     parser.add_argument("--learning_rate", type=float, default=5e-5, help="Learning rate")
     parser.add_argument("--hidden_size", type=int, default=768, help="Hidden size")
-    parser.add_argument("--num_hidden_layers", type=int, default=12, help="Number of hidden layers")
+    parser.add_argument("--num_hidden_layers", type=int, default=6, help="Number of hidden layers")
     parser.add_argument("--num_attention_heads", type=int, default=12, help="Number of attention heads")
     parser.add_argument("--shard_size", type=int, default=10000, help="Shard size")
     parser.add_argument("--train_data_path", type=str, help="Path to the training data")
@@ -50,10 +54,10 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    os.environ["WANDB_PROJECT"] = "BioLeastAction"  # log to your project
+    os.environ["WANDB_PROJECT"] = "BioLeastAction2"  # log to your project
     os.environ["WANDB_LOG_MODEL"] = "all"  # log your models
 
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+    adata = sc.read_h5ad("data/reprogramming_schiebinger_force_directed_768.h5ad")
 
     train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
@@ -69,49 +73,46 @@ if __name__ == "__main__":
         n_layer=args.num_hidden_layers,
         n_head=args.num_attention_heads,
         vocab_size=num_cells + num_cell_types, # number of cells and cell types
+        use_cache=False,
     )
 
     model = GPT2IdLeastActionModel(config)
     # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
     model.to(args.device)
 
-    working_dir = f"{args.output_dir}/all_cells_vocabulary_cell_type"
+    working_dir = f"{args.output_dir}/all_cells_vocab_cell_type_6layers"
 
     training_args = TrainingArguments(
         output_dir=working_dir,
         overwrite_output_dir=True,
         num_train_epochs=args.n_epochs,
         per_device_train_batch_size=50, #350
-        per_device_eval_batch_size=250, # 300
+        per_device_eval_batch_size=10, # 300
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
         # weight_decay=1e-10,
         # max_grad_norm=0.1,
         # warmup_ratio=0.1,
-        # lr_scheduler_type="cosine",
         logging_dir=working_dir,
-        dataloader_num_workers=30,
+        dataloader_num_workers=5,
         logging_steps=10,
         save_strategy="steps",  # save a checkpoint every save_steps
         save_steps=500,  #int(args.save_steps * len(train_dataset)),
         save_total_limit=5,
         eval_strategy="steps",  # evaluation is done every eval_steps
-        eval_steps=2000, #int(0.25 * len(train_dataset)),
+        eval_steps=100, #int(0.25 * len(train_dataset)),
         eval_accumulation_steps=1,
         load_best_model_at_end=False,
-        fp16=True,
+        # fp16=True,
         report_to=None,
     )
-
-    # optimizer = torch.optim.Adam(model.parameters())#, lr=args.learning_rate, weight_decay=1e-10)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 14, 2, eta_min=1e-9)
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        # optimizers=(optimizer, scheduler)
+        # compute_metrics=compute_metrics,
     )
 
     # Train the model
