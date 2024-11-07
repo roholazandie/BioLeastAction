@@ -65,7 +65,7 @@ def parse_args():
 
     parser.add_argument("--per_device_train_batch_size",
                         type=int,
-                        default=9,
+                        default=100,
                         help="Training batch size")
 
 
@@ -109,7 +109,7 @@ def parse_args():
 
     parser.add_argument("--output_dir",
                         type=str,
-                        default="checkpoints",
+                        default="checkpoints/all_cells_vocabulary_no_trainer2",
                         help="Output directory")
 
     parser.add_argument("--max_length",
@@ -151,6 +151,7 @@ def parse_args():
     parser.add_argument("--resume_from_checkpoint",
                         type=str,
                         default=None,
+                        # default="checkpoints/all_cells_vocabulary_no_trainer2/step_4",
                         help="Resume from checkpoint")
 
     parser.add_argument("--with_tracking",
@@ -174,7 +175,7 @@ def parse_args():
 
     parser.add_argument("--checkpointing_steps",
                         type=str,
-                        default=500,
+                        default=100,
                         help="Checkpointing steps")
 
     parser.add_argument("--expression_max_value",
@@ -194,6 +195,51 @@ def parse_args():
 
     return parser.parse_args()
 
+def generate_sample_trajectories(adata, model, epoch):
+    days_values = sorted(list(set(adata.obs["day_numerical"])))
+    adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
+
+    generated_trajectories_ids = []
+    temperature = 0.8
+    top_k = 10
+    top_p = 0.3
+    n_trajectories = 100
+
+    generation_config = GenerationConfig(
+        max_length=38,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        do_sample=True,
+    )
+
+    cell_types = list(set(adata.obs['cell_sets']))
+    cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(cell_types)}
+
+    for _ in tqdm(range(n_trajectories)):
+        rand_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
+        cell_idx = torch.tensor([adata.obs.index.get_loc(rand_idx)], dtype=torch.long).to('cuda:0')
+        cell_type_idx = torch.tensor([cell_types_to_idx[adata.obs['cell_sets'][rand_idx]]], dtype=torch.long).to(
+            'cuda:0')
+        # Generate text
+        output = model.generate(
+            input_ids=cell_idx.unsqueeze(0),
+            cell_type_ids=cell_type_idx.unsqueeze(0),
+            generation_config=generation_config,
+        )
+        generated_trajectories_ids.append([x.cpu().numpy() for x in output.squeeze(0)])
+
+    plot(adata=adata,
+         sims=generated_trajectories_ids,
+         basis='X_draw_graph_fa',
+         cmap='rainbow',
+         linewidth=1.0,
+         linealpha=0.3,
+         dpi=300,
+         figsize=(12, 12),
+         ixs_legend_loc="upper right",
+         save=f"{args.output_dir}/epoch_{epoch}.png"
+         )
 
 if __name__ == "__main__":
     # set the random seed for reproducibility
@@ -225,7 +271,7 @@ if __name__ == "__main__":
     train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
                                               columns_to_use=["input_ids", "labels", "cell_type_ids"],
-                                              T=0.9,
+                                              T=0.8,
                                               embedding_size=adata.obsm["X_pca"].shape[1],
                                               shuffle=True)
 
@@ -257,7 +303,7 @@ if __name__ == "__main__":
     )
 
     model = GPT2IdLeastActionModel(config)
-    # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
+    # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocab_no_trainer/checkpoints/step_2000")
     model.to(args.device)
 
     # Optimizer
@@ -395,6 +441,7 @@ if __name__ == "__main__":
                     if args.output_dir is not None:
                         output_dir = os.path.join(args.output_dir, output_dir)
                     accelerator.save_state(output_dir)
+                    print(f"Saved checkpoint at step {completed_steps}")
             if completed_steps >= args.max_train_steps:
                 break
 
@@ -417,51 +464,7 @@ if __name__ == "__main__":
         logger.info(f"epoch {epoch}: perplexity: {perplexity} eval_loss: {eval_loss}")
 
         # generate some sample trajectories
-        days_values = sorted(list(set(adata.obs["day_numerical"])))
-        adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
-
-        generated_trajectories_ids = []
-        temperature = 0.8
-        top_k = 10
-        top_p = 0.3
-        repetition_penalty = 1.5
-        n_trajectories = 100
-
-        generation_config = GenerationConfig(
-            max_length=38,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            do_sample=True,
-        )
-
-        cell_types = list(set(adata.obs['cell_sets']))
-        cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(cell_types)}
-
-        for _ in tqdm(range(n_trajectories)):
-            rand_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
-            cell_idx = torch.tensor([adata.obs.index.get_loc(rand_idx)], dtype=torch.long).to('cuda:0')
-            cell_type_idx = torch.tensor([cell_types_to_idx[adata.obs['cell_sets'][rand_idx]]], dtype=torch.long).to(
-                'cuda:0')
-            # Generate text
-            output = model.generate(
-                input_ids=cell_idx.unsqueeze(0),
-                cell_type_ids=cell_type_idx.unsqueeze(0),
-                generation_config=generation_config,
-            )
-            generated_trajectories_ids.append([x.cpu().numpy() for x in output.squeeze(0)])
-
-        plot(adata=adata,
-             sims=generated_trajectories_ids,
-             basis='X_draw_graph_fa',
-             cmap='rainbow',
-             linewidth=1.0,
-             linealpha=0.3,
-             dpi=300,
-             figsize=(12, 12),
-             ixs_legend_loc="upper right",
-             save=f"{args.output_dir}/epoch_{epoch}.png"
-             )
+        generate_sample_trajectories(adata, model, epoch)
 
 
         if args.with_tracking:
@@ -481,6 +484,7 @@ if __name__ == "__main__":
             if args.output_dir is not None:
                 output_dir = os.path.join(args.output_dir, output_dir)
             accelerator.save_state(output_dir)
+            print(f"Saved checkpoint at epoch {epoch}")
 
     if args.with_tracking:
         accelerator.end_training()

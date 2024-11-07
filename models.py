@@ -661,8 +661,8 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
     def get_output_embeddings(self):
         return self.lm_head
 
-    # def set_output_embeddings(self, new_embeddings):
-    #     self.lm_head.weight = torch.nn.Parameter(new_embeddings)
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
         cell_type_ids = kwargs.get("cell_type_ids", None)

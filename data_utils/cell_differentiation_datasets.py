@@ -98,7 +98,7 @@ class AnnDataTrajectoryDataset(Dataset):
                  embedding_size=None,
                  T=0.8,
                  normalize_embeddings=True,
-                 markovian=False,
+                 markovian=True,
                  tau=1.0,
                  C=5):
         self.adata = adata
@@ -141,6 +141,7 @@ class AnnDataTrajectoryDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.adata)
+        # return 10000
 
     def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
         # Calculate correlation between current day and each cell in the next day
