@@ -6,7 +6,7 @@ from data_utils.cell_differentiation_datasets import get_dataset
 from models import GPT2IdLeastActionModel
 import cellrank as cr
 import scipy
-
+from datasets import load_from_disk
 from plots.plot_trajectories import map_embeddings_to_umap, plot, animate_simulated_trajectories
 import scvelo as scv
 import matplotlib.pyplot as plt
@@ -18,9 +18,9 @@ do_animation = True
 n_trajectories = 100
 
 # Load the checkpoint
-checkpoint_path = "checkpoints/all_cells_vocabulary_cell_type/checkpoint-77000"
-model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
-model.to('cuda:0')
+# checkpoint_path = "checkpoints/all_cells_vocabulary_cell_type/checkpoint-77000"
+# model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
+# model.to('cuda:0')
 
 adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
 
@@ -37,11 +37,15 @@ set_seed(42)
 
 data_temperature = 0.1
 
-train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
-                                          adata=adata,
-                                          T=data_temperature,
-                                          embedding_size=adata.obsm["X_pca"].shape[1],
-                                          shuffle=True)
+# train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
+#                                           adata=adata,
+#                                           T=data_temperature,
+#                                           embedding_size=adata.obsm["X_pca"].shape[1],
+#                                           shuffle=True)
+
+train_dataset = load_from_disk('data/adata_trajectory_dataset')
+
+train_dataset = train_dataset.shuffle(seed=42).select(range(n_trajectories))
 
 entropies = []
 real_trajectories_ids = []
@@ -134,7 +138,7 @@ if do_animation:
                                    figsize=(12, 12),
                                    ixs_legend_loc="upper right",
                                    # save=f"figures/cell_types/generated_trajectories_repeat_penalty_{repetition_penalty}_77000.mp4",
-                                   save=f"figures/real_trajectories_cell_types_{data_temperature}.mp4",
+                                   save=f"figures/real_trajectories_hf_datasets.mp4",
                                    title=f"Generated Trajectories",
                                    )
 else:

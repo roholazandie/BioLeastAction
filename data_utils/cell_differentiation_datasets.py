@@ -1,18 +1,17 @@
 import time
-
-import torch
-import cellrank as cr
-import matplotlib.pyplot as plt
-import scanpy as sc
-import scvelo as scv
-from cellrank.kernels import RealTimeKernel
-import numpy as np
-from plots.plot_trajectories import plot
 from torch.utils.data import IterableDataset
 from torch.utils.data.dataset import Dataset, Subset
 import torch.nn as nn
 from sklearn.neighbors import KDTree
+from tqdm import tqdm
 import torch.nn.functional as F
+import multiprocessing
+from datasets import Dataset as HFDataset
+from datasets import concatenate_datasets, Features, Sequence, Value
+import shutil
+import os
+import torch
+from datasets import Dataset as HFDataset, Features, Sequence, Value, Array2D
 
 
 def generate_random_vector(dimension, step_size, distribution):
@@ -91,6 +90,11 @@ class TreeVectorsDataset(Dataset):
             "labels_embeds": self.vectors[idx][1:]
         }
 
+import numpy as np
+from torch.utils.data import Dataset
+import torch
+import scanpy as sc
+
 class AnnDataTrajectoryDataset(Dataset):
     def __init__(self, adata,
                  embedding_key=None,
@@ -100,16 +104,19 @@ class AnnDataTrajectoryDataset(Dataset):
                  normalize_embeddings=True,
                  markovian=True,
                  tau=1.0,
-                 C=5):
+                 C=5,
+                 output_numpy=False):  # Added output_numpy flag
         self.adata = adata
-        if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or embedding_size != self.adata.obsm[
-            'X_pca'].shape[1]:
+        self.output_numpy = output_numpy  # Store the flag
+
+        if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or \
+           (embedding_size is not None and embedding_size != self.adata.obsm['X_pca'].shape[1]):
             sc.tl.pca(self.adata, n_comps=embedding_size)
 
         # Define which columns to use; if None, use the default set of columns
-        self.columns_to_use = columns_to_use if columns_to_use is not None else ["input_ids", "labels",
-                                                                                 "cell_embeddings", "cell_type_ids",
-                                                                                 "entropies"]
+        self.columns_to_use = columns_to_use if columns_to_use is not None else [
+            "input_ids", "labels", "cell_embeddings", "cell_type_ids", "entropies"
+        ]
 
         if embedding_key == "expression_probability" and "expression_probability" not in self.adata.obsm.keys():
             sc.pp.highly_variable_genes(self.adata, flavor='seurat', n_top_genes=embedding_size)
@@ -126,11 +133,10 @@ class AnnDataTrajectoryDataset(Dataset):
         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
         self.T = T
 
-        # num_cells = len(self.adata)
         self.cell_types = list(set(self.adata.obs['cell_sets']))
         self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
 
-        # normalize the embeddings
+        # Normalize the embeddings
         if normalize_embeddings:
             embeddings = self.adata.obsm[self.embedding_key]
             self.adata.obsm[self.embedding_key] = embeddings / np.linalg.norm(embeddings, axis=1)[:, None]
@@ -140,8 +146,8 @@ class AnnDataTrajectoryDataset(Dataset):
         self.C = C  # Number of previous steps to consider in non-Markovian case
 
     def __len__(self) -> int:
-        return len(self.adata)
-        # return 10000
+        # return len(self.adata)
+        return 200000
 
     def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
         # Calculate correlation between current day and each cell in the next day
@@ -173,10 +179,18 @@ class AnnDataTrajectoryDataset(Dataset):
         cell_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
         current_cell_idx = cell_idx
 
+        # Handle output_numpy flag
+        if self.output_numpy:
+            embedding = np.array(self.adata[cell_idx].obsm[self.embedding_key])
+            expression = np.array(self.adata[cell_idx].X.todense())
+        else:
+            embedding = torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key])
+            expression = torch.Tensor(np.array(self.adata[cell_idx].X.todense()))
+
         trajectory.append({
             "cell_idx": self.adata.obs.index.get_loc(cell_idx),
-            self.embedding_key: torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key]),
-            "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense())),
+            self.embedding_key: embedding,
+            "expression": expression,
             "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()],
             "entropy": 0.0
         })
@@ -202,20 +216,29 @@ class AnnDataTrajectoryDataset(Dataset):
                 next_day_umap = adata_next_day.obsm["X_umap"]
 
                 # Compute similarity
-                softmax_similarity = self.compute_similarity(pca_current_day,
-                                                             pca_next_day,
-                                                             current_cell_umap,
-                                                             next_day_umap
-                                                             )
+                softmax_similarity = self.compute_similarity(
+                    pca_current_day,
+                    pca_next_day,
+                    current_cell_umap,
+                    next_day_umap
+                )
 
-                # compute the entropy
+                # Compute the entropy
                 entropy = -np.sum(softmax_similarity * np.log(softmax_similarity)) / np.log(len(softmax_similarity))
                 selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=softmax_similarity)
 
+                # Handle output_numpy flag
+                if self.output_numpy:
+                    embedding = np.array(self.adata[selected_cell_idx].obsm[self.embedding_key])
+                    expression = np.array(self.adata[selected_cell_idx].X.todense())
+                else:
+                    embedding = torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key])
+                    expression = torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense()))
+
                 trajectory.append({
                     "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
-                    self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
-                    "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
+                    self.embedding_key: embedding,
+                    "expression": expression,
                     "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()],
                     "entropy": entropy
                 })
@@ -244,11 +267,12 @@ class AnnDataTrajectoryDataset(Dataset):
                     next_day_umap = adata_next_day.obsm["X_umap"]
 
                     # Compute similarity
-                    softmax_similarity = self.compute_similarity(pca_current_day,
-                                                                 pca_next_day,
-                                                                 current_cell_umap,
-                                                                 next_day_umap
-                                                                 )
+                    softmax_similarity = self.compute_similarity(
+                        pca_current_day,
+                        pca_next_day,
+                        current_cell_umap,
+                        next_day_umap
+                    )
 
                     # Exponential discounting weight
                     weight = np.exp(-i / self.tau)  # Most recent cell has highest weight
@@ -265,10 +289,18 @@ class AnnDataTrajectoryDataset(Dataset):
                 # Select next cell
                 selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=total_similarity)
 
+                # Handle output_numpy flag
+                if self.output_numpy:
+                    embedding = np.array(self.adata[selected_cell_idx].obsm[self.embedding_key])
+                    expression = np.array(self.adata[selected_cell_idx].X.todense())
+                else:
+                    embedding = torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key])
+                    expression = torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense()))
+
                 trajectory.append({
                     "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
-                    self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
-                    "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
+                    self.embedding_key: embedding,
+                    "expression": expression,
                     "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()],
                     "entropy": entropy
                 })
@@ -277,7 +309,13 @@ class AnnDataTrajectoryDataset(Dataset):
         trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
         cell_types_ids = [t["cell_type_ids"] for t in trajectory]
         entropies = [t["entropy"] for t in trajectory]
-        cell_embeddings = torch.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
+
+        # Stack embeddings appropriately
+        if self.output_numpy:
+            cell_embeddings = np.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
+        else:
+            cell_embeddings = torch.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
+
         result = {
             "input_ids": trajectory_cell_indices,
             "labels": trajectory_cell_indices,
@@ -292,142 +330,6 @@ class AnnDataTrajectoryDataset(Dataset):
 
 
 
-# class AnnDataTrajectoryDataset(Dataset):
-#     def __init__(self, adata, embedding_key=None, columns_to_use=None, embedding_size=None, T=0.8, normalize_embeddings=True):
-#         self.adata = adata
-#         if (embedding_key is None and 'X_pca' not in self.adata.obsm.keys()) or embedding_size != self.adata.obsm['X_pca'].shape[1]:
-#             sc.tl.pca(self.adata, n_comps=embedding_size)
-#
-#         # Define which columns to use; if None, use the default set of columns
-#         self.columns_to_use = columns_to_use if columns_to_use is not None else ["input_ids", "labels",
-#                                                                                  "cell_embeddings", "cell_type_ids",
-#                                                                                  "entropies"]
-#
-#         if embedding_key == "expression_probability" and "expression_probability" not in self.adata.obsm.keys():
-#             sc.pp.highly_variable_genes(self.adata, flavor='seurat', n_top_genes=embedding_size)
-#             self.adata = self.adata[:, self.adata.var['highly_variable']]
-#             self.adata = self.adata[:, :embedding_size]
-#             X_dense = np.array(self.adata.X.todense())
-#             self.adata.obsm["expression_probability"] = X_dense / np.sum(X_dense, axis=1)[:, None]
-#             self.adata.write("reprogramming_schiebinger_scgen_exp_prob.h5ad")
-#
-#         self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
-#         self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
-#
-#         self.embedding_key = embedding_key
-#         self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
-#         self.T = T
-#
-#         # num_cells = len(self.adata)
-#         self.cell_types = list(set(self.adata.obs['cell_sets']))
-#         self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
-#
-#         # normalize the embeddings
-#         if normalize_embeddings:
-#             embeddings = self.adata.obsm[self.embedding_key]
-#             self.adata.obsm[self.embedding_key] = embeddings / np.linalg.norm(embeddings, axis=1)[:, None]
-#
-#
-#     def __len__(self) -> int:
-#         return len(self.adata)
-#
-#     def compute_similarity(self, pca_current_day,
-#                            pca_next_day,
-#                            current_cell_umap,
-#                            next_day_umap):
-#         # Calculate correlation between current day and each cell in the next day
-#         correlations_pca = np.dot(pca_next_day, pca_current_day.T).flatten()
-#
-#         # Apply Log-Sum-Exp Trick
-#         max_val_pca = np.max(correlations_pca / self.T)  # Find the maximum to subtract for numerical stability
-#         similarity_pca = np.exp((correlations_pca / self.T) - max_val_pca)  # Apply the shift
-#         softmax_similarity_pca = similarity_pca / np.sum(similarity_pca)
-#
-#         # Calculate correlation between current day and each cell in the next day
-#         correlations_umap = np.dot(next_day_umap, current_cell_umap.T).flatten()
-#
-#         # Apply Log-Sum-Exp Trick
-#         max_val_umap = np.max(correlations_umap / self.T)  # Find the maximum to subtract for numerical stability
-#         similarity_umap = np.exp((correlations_umap / self.T) - max_val_umap)  # Apply the shift
-#         softmax_similarity_umap = similarity_umap / np.sum(similarity_umap)
-#
-#         # Combine the two similarities
-#         combined_similarity = 0.5 * softmax_similarity_pca + 0.5 * softmax_similarity_umap
-#
-#         # calculate the entropy
-#
-#         return combined_similarity
-#
-#     def __getitem__(self, index: int):
-#         np.random.seed(index)  # Seed for reproducibility
-#
-#         trajectory = []
-#         adata_first_day = self.adata[self.adata.obs["day_numerical"] == self.days_values[0], :]
-#         cell_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
-#         current_cell_idx = cell_idx
-#
-#         trajectory.append({
-#             "cell_idx": self.adata.obs.index.get_loc(cell_idx),
-#             self.embedding_key: torch.Tensor(self.adata[cell_idx].obsm[self.embedding_key]),
-#             "expression": torch.Tensor(np.array(self.adata[cell_idx].X.todense())),
-#             "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()],
-#             "entropy": 0.0
-#         })
-#
-#         for iter, day_value in enumerate(self.days_values):
-#             if iter == len(self.days_values) - 1:
-#                 break
-#
-#             # Get PCA embeddings for the current cell
-#             pca_current_day = np.array(self.adata[current_cell_idx].obsm["X_pca"].tolist())
-#             pca_current_day = pca_current_day / np.linalg.norm(pca_current_day)
-#             # Get PCA embeddings for the next day
-#             next_day_value = self.days_values[iter + 1]
-#             adata_next_day = self.adata[self.adata.obs["day_numerical"] == next_day_value, :]
-#             pca_next_day = adata_next_day.obsm["X_pca"]
-#
-#             # Get the X_umap of the current cell
-#             current_cell_umap = np.array(self.adata[current_cell_idx].obsm["X_umap"].tolist())
-#             current_cell_umap = current_cell_umap / np.linalg.norm(current_cell_umap)
-#             # Get the X_umap of the next day
-#             next_day_umap = adata_next_day.obsm["X_umap"]
-#
-#             # Compute similarity
-#             softmax_similarity = self.compute_similarity(pca_current_day,
-#                                                          pca_next_day,
-#                                                          current_cell_umap,
-#                                                          next_day_umap
-#                                                          )
-#
-#             # compute the entropy
-#             entropy = -np.sum(softmax_similarity * np.log(softmax_similarity))/np.log(len(softmax_similarity))
-#             selected_cell_idx = np.random.choice(adata_next_day.obs.index, p=softmax_similarity)
-#
-#
-#             trajectory.append({
-#                 "cell_idx": self.adata.obs.index.get_loc(selected_cell_idx),
-#                 self.embedding_key: torch.Tensor(self.adata[selected_cell_idx].obsm[self.embedding_key]),
-#                 "expression": torch.Tensor(np.array(self.adata[selected_cell_idx].X.todense())),
-#                 "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()],
-#                 "entropy": entropy
-#             })
-#             current_cell_idx = selected_cell_idx
-#
-#         trajectory_cell_indices = [t["cell_idx"] for t in trajectory]
-#         cell_types_ids = [t["cell_type_ids"] for t in trajectory]
-#         entropies = [t["entropy"] for t in trajectory]
-#         cell_embeddings = torch.stack([t[self.embedding_key].squeeze(0) for t in trajectory])
-#         result = {
-#             "input_ids": trajectory_cell_indices,
-#             "labels": trajectory_cell_indices,
-#             "cell_type_ids": cell_types_ids,
-#             "cell_embeddings": cell_embeddings,
-#             "entropies": entropies
-#         }
-#
-#         # Filter result to include only keys in columns_to_use
-#         result = {key: value for key, value in result.items() if key in self.columns_to_use}
-#         return result
 
 class AnnDataTrajectoryDatasetFast(Dataset):
     def __init__(self, adata, embedding_key=None, embedding_size=None, T=0.9, k_neighbors=100):
@@ -530,6 +432,61 @@ class AnnDataTrajectoryDatasetFast(Dataset):
         }
 
 
+def save_anndata_trajectory_dataset_to_hf_dataset(adata,
+                                                  T=0.8,
+                                                  markovian=True,
+                                                  normalize_embeddings=True,
+                                                  tau=1.0,
+                                                  C=5):
+    # Instantiate your AnnDataTrajectoryDataset
+    embedding_key = 'X_pca'  # or any other embedding key you are using
+    embedding_size = adata.obsm["X_pca"].shape[1]  # adjust based on your embedding size
+    adata_trajectory_dataset = AnnDataTrajectoryDataset(
+        adata,
+        embedding_key=embedding_key,
+        embedding_size=embedding_size,
+        T=T,
+        normalize_embeddings=normalize_embeddings,
+        markovian=markovian,
+        tau=tau,
+        C=C,
+        output_numpy=True
+    )
+
+    # Get a sample to determine shapes
+    sample = adata_trajectory_dataset[0]
+    embedding_dim = sample["cell_embeddings"].shape[1]
+
+    # Define the features for the Hugging Face Dataset
+    features = Features({
+        "input_ids": Sequence(Value(dtype='int64')),
+        "labels": Sequence(Value(dtype='int64')),
+        "cell_type_ids": Sequence(Value(dtype='int64'))
+    })
+
+    # Create a generator function to yield samples
+    def data_generator():
+        dataset_length = len(adata_trajectory_dataset)
+        for idx in range(dataset_length):
+            sample = adata_trajectory_dataset[idx]
+            # Convert torch tensors to numpy arrays
+            for key, value in sample.items():
+                if isinstance(value, torch.Tensor):
+                    sample[key] = value.numpy()
+            yield sample
+
+    # Create the Hugging Face Dataset from the generator
+    hf_dataset = HFDataset.from_generator(
+        data_generator,
+        features=features
+    )
+
+    # Save the dataset to disk
+    hf_dataset.save_to_disk('../data/adata_trajectory_dataset')
+
+
+
+
 def split_dataset(dataset, test_size=0.2, random_seed=42, shuffle=True):
     """
     Split the dataset into train and eval sets.
@@ -607,13 +564,26 @@ def get_dataset(dataset_name,
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("../data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
-    dataset = AnnDataTrajectoryDataset(adata, embedding_key="X_pca")
-    # dataset = AnnDataTrajectoryDatasetFast(adata, embedding_key="X_pca", T=0.9, k_neighbors=5000)
-    t1 = time.time()
-    for i, item in enumerate(dataset):
-        print(item) # 94.97 seconds
-        if i == 300: # 62.48
-            break
+    from datasets import load_from_disk
 
-    print(f"Time taken: {time.time() - t1:.2f} seconds")
+    t1 = time.time()
+    # adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
+    # save_anndata_trajectory_dataset_to_hf_dataset(adata)
+    # print(f"Time taken: {time.time() - t1:.2f} seconds")
+    # # load the dataset
+
+    dataset = load_from_disk('../data/adata_trajectory_dataset')
+    print(dataset[0])
+
+
+
+    # adata = sc.read_h5ad("../data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
+    # dataset = AnnDataTrajectoryDataset(adata, embedding_key="X_pca")
+    # # dataset = AnnDataTrajectoryDatasetFast(adata, embedding_key="X_pca", T=0.9, k_neighbors=5000)
+    # t1 = time.time()
+    # for i, item in enumerate(dataset):
+    #     print(item) # 94.97 seconds
+    #     if i == 300: # 62.48
+    #         break
+    #
+    # print(f"Time taken: {time.time() - t1:.2f} seconds")

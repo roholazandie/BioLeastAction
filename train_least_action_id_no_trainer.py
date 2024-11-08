@@ -2,7 +2,7 @@ import argparse, logging, os
 import time
 import math
 from sre_parse import parse
-
+from datasets import load_from_disk
 import torch
 import numpy as np
 import logging
@@ -158,6 +158,11 @@ def parse_args():
                         action="store_false",
                         help="Whether to enable experiment trackers for logging.")
 
+    parser.add_argument("--generate_trajectories",
+                        action="store_true",
+                        help="Generate trajectories"
+                        )
+
     parser.add_argument("--report_to",
                         type=str,
                         default="wandb",
@@ -268,12 +273,18 @@ if __name__ == "__main__":
 
     # assert adata.obsm["X_pca"].shape[1] == args.hidden_size, f"PCA dimension {adata.obsm['X_pca'].shape[1]} is not equal to hidden size {args.hidden_size}"
 
-    train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
-                                              adata=adata,
-                                              columns_to_use=["input_ids", "labels", "cell_type_ids"],
-                                              T=0.8,
-                                              embedding_size=adata.obsm["X_pca"].shape[1],
-                                              shuffle=True)
+    if args.generate_trajectories:
+        train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
+                                                  adata=adata,
+                                                  columns_to_use=["input_ids", "labels", "cell_type_ids"],
+                                                  T=0.8,
+                                                  embedding_size=adata.obsm["X_pca"].shape[1],
+                                                  shuffle=True)
+    else:
+        dataset = load_from_disk('data/adata_trajectory_dataset_hf')
+        train_dataset = dataset['train']
+        eval_dataset = dataset['test']
+
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
@@ -303,7 +314,6 @@ if __name__ == "__main__":
     )
 
     model = GPT2IdLeastActionModel(config)
-    # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocab_no_trainer/checkpoints/step_2000")
     model.to(args.device)
 
     # Optimizer
