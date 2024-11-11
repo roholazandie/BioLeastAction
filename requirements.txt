@@ -12,3 +12,4 @@ cython
 fa2_modified
 vector_quantize_pytorch
 accelerate==1.1.1
+datasets

@@ -46,6 +46,7 @@ def plot(
         figsize: Optional[Tuple[float, float]] = None,
         dpi: Optional[int] = None,
         save: Optional[Union[str, pathlib.Path]] = None,
+        background_color: Optional[str] = None,
         **kwargs: Any,
 ) -> None:
     """Plot simulated random walks.
@@ -124,6 +125,11 @@ def plot(
             )
 
     else:
+        # Set the background color if specified
+        if background_color is not None:
+            ax.set_facecolor(background_color)
+            fig.patch.set_facecolor(background_color)
+
         scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
 
         emb = adata.obsm[f"X_{basis}"]
@@ -169,7 +175,8 @@ def plot(
         if legend is not None:
             ax.add_artist(legend)
         _position_legend(ax, legend_loc=ixs_legend_loc, handles=[h1, h2])
-
+    # tight the layout
+    plt.tight_layout()
     if save is not None:
         plt.savefig(save, dpi=300)
 

@@ -14,7 +14,7 @@ import scanpy as sc
 from train_least_action_id import set_seed
 
 
-do_animation = True
+do_animation = False
 n_trajectories = 100
 
 # Load the checkpoint
@@ -148,10 +148,11 @@ else:
          cmap='rainbow',
          linewidth=1.0,
          linealpha=0.3,
-         dpi=300,
-         figsize=(12, 12),
-         ixs_legend_loc="upper right",
-         save="figures/generated_trajectories3_correlation_unnormalized.png"
+         dpi=600,
+         figsize=(16, 16),
+         ixs_legend_loc=None,#"upper right",
+         save="figures/generated_trajectories3_correlation_background_black.png",
+         background_color="black"
          )
 
     plt.show()

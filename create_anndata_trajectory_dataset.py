@@ -95,4 +95,4 @@ trajectories_dataset = DatasetDict({
 })
 
 # Save the entire DatasetDict to disk
-trajectories_dataset.save_to_disk('data/adata_trajectory_dataset_hf')
+trajectories_dataset.save_to_disk('data/large_adata_trajectory_dataset')

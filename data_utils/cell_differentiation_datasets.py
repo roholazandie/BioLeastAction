@@ -147,7 +147,7 @@ class AnnDataTrajectoryDataset(Dataset):
 
     def __len__(self) -> int:
         # return len(self.adata)
-        return 200000
+        return 1000000
 
     def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
         # Calculate correlation between current day and each cell in the next day
