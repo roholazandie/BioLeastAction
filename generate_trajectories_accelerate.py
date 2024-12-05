@@ -1,8 +1,9 @@
 import torch
 import numpy as np
 import anndata as ad
+from accelerate import Accelerator
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import GenerationConfig, GPT2Config
 
 from data_utils.cell_differentiation_datasets import get_dataset
 from models import GPT2IdLeastActionModel
@@ -21,15 +22,30 @@ do_animation = True
 n_trajectories = 100
 
 # Load the checkpoint
-checkpoint_path = "/home/rohola/checkpoints/step_5000"
-model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
-model.to('cuda:0')
+checkpoint_path = "/home/rohola/checkpoint_layer2_head3/checkpoints/step_1000"
+
 
 adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+num_cells = len(adata)
+num_cell_types = len(set(adata.obs['cell_sets']))
 
-# sc.pp.neighbors(adata, n_pcs=30, n_neighbors=30, random_state=0)
-# sc.tl.umap(adata, n_components=30)
-# adata.write("data/reprogramming_schiebinger_serum_computed.h5ad")
+config = GPT2Config(
+        n_positions=39,
+        n_embd=768,
+        n_layer=2,
+        n_head=3,
+        vocab_size=num_cells + num_cell_types, # number of cells and cell types
+        use_cache=False,
+    )
+
+model = GPT2IdLeastActionModel(config)
+model.to('cuda:0')
+
+
+accelerator = Accelerator()
+model = accelerator.prepare(model)
+accelerator.load_state(checkpoint_path)
+
 
 
 # del adata.obsm["X_pca"]
@@ -51,7 +67,7 @@ data_temperature = 0.1
 # train_dataset = train_dataset.shuffle(seed=42).select(range(n_trajectories))
 #
 # entropies = []
-# real_trajectories_ids = []
+real_trajectories_ids = []
 # for i, trajectory in tqdm(enumerate(train_dataset)):
 #     real_trajectories_ids.append(trajectory['input_ids'])
 #     if i == n_trajectories:
@@ -66,15 +82,13 @@ generated_trajectories_ids = []
 temperature = 0.8
 top_k = 10
 top_p = 0.3
-repetition_penalty = 1.5
 
 generation_config = GenerationConfig(
     max_length=38,
     temperature=temperature,
     top_k=top_k,
     top_p=top_p,
-    do_sample=True,
-    # repetition_penalty=repetition_penalty,
+    do_sample=True
 )
 
 cell_types = list(set(adata.obs['cell_sets']))
@@ -88,7 +102,7 @@ for _ in tqdm(range(n_trajectories)):
     # Generate text
     output = model.generate(
         input_ids=cell_idx.unsqueeze(0),
-        token_type_ids=cell_type_idx.unsqueeze(0),
+        cell_type_ids=cell_type_idx.unsqueeze(0),
         generation_config=generation_config,
     )
     generated_trajectories_ids.append([x.cpu().numpy() for x in output.squeeze(0)])
@@ -141,7 +155,7 @@ if do_animation:
                                    figsize=(12, 12),
                                    ixs_legend_loc="upper right",
                                    # save=f"figures/cell_types/generated_trajectories_repeat_penalty_{repetition_penalty}_77000.mp4",
-                                   save=f"figures/generated_traj.mp4",
+                                   save=f"figures/generated_traj4.mp4",
                                    title=f"Generated Trajectories",
                                    )
 else:

@@ -150,8 +150,8 @@ def parse_args():
 
     parser.add_argument("--resume_from_checkpoint",
                         type=str,
-                        default=None,
-                        # default="checkpoints/all_cells_vocabulary_no_trainer2/step_4",
+                        # default=None,
+                        default="/home/rohola/checkpoints/step_5000",
                         help="Resume from checkpoint")
 
     parser.add_argument("--with_tracking",
