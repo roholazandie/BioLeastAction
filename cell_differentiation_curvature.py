@@ -1,4 +1,4 @@
-from curvature_analysis import balanced_forman_curvature
+from curvature_analysis import balanced_forman_curvature, balanced_forman_curvature_sparse
 from data_utils.cell_differentiation_datasets import get_dataset
 import scanpy as sc
 from datasets import load_from_disk
@@ -37,7 +37,7 @@ for j, path in enumerate(train_dataset):
         G.add_edge(input_ids[i], input_ids[i + 1])
 
 
-C = balanced_forman_curvature(G)
+C = balanced_forman_curvature_sparse(G)
 
 curvature_dict = {(i, j): C[i, j] for i, j in G.edges()}
 

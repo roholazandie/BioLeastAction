@@ -4,7 +4,7 @@ import scanpy as sc
 from plots.plot_trajectories import plot_with_curvature, animate_with_curvature
 import matplotlib.pyplot as plt
 
-G = pickle.load(open('data/train_graph_curvature.pickle', 'rb'))
+G = pickle.load(open('data/eval_graph_curvature.pickle', 'rb'))
 
 adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
 
@@ -15,35 +15,35 @@ eval_dataset = dataset['test']
 real_trajectories_ids = []
 trajectories_curvatures = []
 j = 0
-m = []
-for trajectory in train_dataset:
+for trajectory in eval_dataset:
     input_ids = trajectory['input_ids']
     real_trajectories_ids.append(input_ids)
     trajectory_curvatures = [G.edges[input_ids[i], input_ids[i + 1]]['curvature'] for i in range(len(input_ids) - 1)]
-    m.append(max(trajectory_curvatures))
-    # if max(trajectory_curvatures) > 0:
-    #     trajectories_curvatures.append(trajectory_curvatures)
-    #     j += 1
-    #     if j == 100:
-    #         break
+    # trajectories_curvatures.append(trajectory_curvatures)
+    print(sum(trajectory_curvatures))
+    if sum(trajectory_curvatures) > -30:
+        trajectories_curvatures.append(trajectory_curvatures)
+        j += 1
+        if j == 100:
+            break
 
 
 
 print(j)
 #
-# cmap = "coolwarm"
-# plot_with_curvature(adata=adata,
-#                     sims=real_trajectories_ids,
-#                     curvatures=trajectories_curvatures,
-#                     basis='X_draw_graph_fa',
-#                     cmap=cmap,
-#                     linewidth=1.0,
-#                     linealpha=1.0,
-#                     dpi=300,
-#                     figsize=(12, 12),
-#                     ixs_legend_loc="upper right",
-#                     save="figures/trajectory_curvatures.png"
-#                     )
+cmap = "coolwarm"
+plot_with_curvature(adata=adata,
+                    sims=real_trajectories_ids,
+                    curvatures=trajectories_curvatures,
+                    basis='X_draw_graph_fa',
+                    cmap=cmap,
+                    linewidth=1.0,
+                    linealpha=1.0,
+                    dpi=300,
+                    figsize=(12, 12),
+                    ixs_legend_loc="upper right",
+                    save="figures/trajectory_curvatures.png"
+                    )
 
 plt.show()
 

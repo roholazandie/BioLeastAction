@@ -150,8 +150,8 @@ def parse_args():
 
     parser.add_argument("--resume_from_checkpoint",
                         type=str,
-                        # default=None,
-                        default="/home/rohola/checkpoints/step_5000",
+                        default=None,
+                        # default="/home/rohola/checkpoints/step_5000",
                         help="Resume from checkpoint")
 
     parser.add_argument("--with_tracking",
@@ -246,6 +246,15 @@ def generate_sample_trajectories(adata, model, epoch):
          save=f"{args.output_dir}/epoch_{epoch}.png"
          )
 
+def custom_collate_fn(batch):
+    """
+    Custom collate function to modify 'cell_type_ids' in the batch.
+    """
+    for item in batch:
+        if 'cell_type_ids' in item:
+            item['cell_type_ids'] = None
+    return default_data_collator(batch)
+
 if __name__ == "__main__":
     # set the random seed for reproducibility
     set_seed(42)
@@ -289,27 +298,29 @@ if __name__ == "__main__":
     # DataLoaders creation:
     train_dataloader = DataLoader(
         train_dataset,
-        collate_fn=default_data_collator,
+        # collate_fn=default_data_collator,
+        collate_fn=custom_collate_fn, # use custom collate_fn to modify 'cell_type_ids'
         shuffle=True,
         batch_size=args.per_device_train_batch_size,
         num_workers=args.dataloader_num_workers
     )
     eval_dataloader = DataLoader(
         eval_dataset,
-        collate_fn=default_data_collator,
+        # collate_fn=default_data_collator,
+        collate_fn=custom_collate_fn, # use custom collate_fn to modify 'cell_type_ids'
         batch_size=args.per_device_eval_batch_size,
         num_workers=args.dataloader_num_workers
     )
 
     num_cells = len(adata)
-    num_cell_types = len(set(adata.obs['cell_sets']))
+    # num_cell_types = len(set(adata.obs['cell_sets']))
 
     config = GPT2Config(
         n_positions=args.max_length,
         n_embd=args.hidden_size,
         n_layer=args.num_hidden_layers,
         n_head=args.num_attention_heads,
-        vocab_size=num_cells + num_cell_types, # number of cells and cell types
+        vocab_size=num_cells, #+ num_cell_types, # number of cells and cell types
         use_cache=False,
     )
 

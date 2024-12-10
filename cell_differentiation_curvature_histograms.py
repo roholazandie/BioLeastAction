@@ -8,7 +8,7 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import get_cmap
 
 # Load data
-G = pickle.load(open('data/eval_graph_curvature.pickle', 'rb'))
+G = pickle.load(open('data/train_graph_curvature.pickle', 'rb'))
 adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
 dataset = load_from_disk('data/adata_trajectory_dataset_hf')
 train_dataset = dataset['train']
@@ -21,7 +21,7 @@ day_numbers = []  # To store corresponding day numbers
 j = 0
 
 # Extract curvatures and day numbers
-for trajectory in eval_dataset:
+for trajectory in train_dataset:
     input_ids = trajectory['input_ids']
     real_trajectories_ids.append(input_ids)
     curvature = [G.edges[input_ids[i], input_ids[i + 1]]['curvature'] for i in range(len(input_ids) - 1)]
