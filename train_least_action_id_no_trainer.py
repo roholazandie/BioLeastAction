@@ -1,5 +1,6 @@
 import argparse, logging, os
 import time
+import shutil
 import math
 from sre_parse import parse
 from datasets import load_from_disk
@@ -255,6 +256,28 @@ def custom_collate_fn(batch):
             item['cell_type_ids'] = None
     return default_data_collator(batch)
 
+
+def clean_old_checkpoints(output_dir, n):
+    """
+    Retain only the last `n` checkpoints and remove older ones.
+
+    Args:
+        output_dir (str): Directory where checkpoints are saved.
+        n (int): Number of recent checkpoints to retain.
+    """
+    checkpoints = [
+        f for f in os.listdir(output_dir)
+        if os.path.isdir(os.path.join(output_dir, f)) and (f.startswith("step_") or f.startswith("epoch_"))
+    ]
+    checkpoints.sort(key=lambda x: os.path.getctime(os.path.join(output_dir, x)))
+
+    # Remove old checkpoints
+    for checkpoint in checkpoints[:-n]:
+        checkpoint_path = os.path.join(output_dir, checkpoint)
+        shutil.rmtree(checkpoint_path)
+        print(f"Removed old checkpoint: {checkpoint_path}")
+
+
 if __name__ == "__main__":
     # set the random seed for reproducibility
     set_seed(42)
@@ -463,6 +486,10 @@ if __name__ == "__main__":
                         output_dir = os.path.join(args.output_dir, output_dir)
                     accelerator.save_state(output_dir)
                     print(f"Saved checkpoint at step {completed_steps}")
+
+                    # Clean up old checkpoints
+                    clean_old_checkpoints(args.output_dir, n=5)  # Retain the last 5 checkpoints
+
             if completed_steps >= args.max_train_steps:
                 break
 
@@ -506,6 +533,9 @@ if __name__ == "__main__":
                 output_dir = os.path.join(args.output_dir, output_dir)
             accelerator.save_state(output_dir)
             print(f"Saved checkpoint at epoch {epoch}")
+
+            # Clean up old checkpoints
+            clean_old_checkpoints(args.output_dir, n=3)  # Retain the last 5 checkpoints
 
     if args.with_tracking:
         accelerator.end_training()
