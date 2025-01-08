@@ -202,6 +202,7 @@ def parse_args():
     return parser.parse_args()
 
 def generate_sample_trajectories(adata, model, epoch):
+    num_cells = len(adata)
     days_values = sorted(list(set(adata.obs["day_numerical"])))
     adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
 
@@ -212,7 +213,7 @@ def generate_sample_trajectories(adata, model, epoch):
     n_trajectories = 100
 
     generation_config = GenerationConfig(
-        max_length=38,
+        max_length=args.max_length,
         temperature=temperature,
         top_k=top_k,
         top_p=top_p,
@@ -246,6 +247,21 @@ def generate_sample_trajectories(adata, model, epoch):
          ixs_legend_loc="upper right",
          save=f"{args.output_dir}/epoch_{epoch}.png"
          )
+    
+    mapped_trajectories_obs = []
+    reference = adata.obs['day_numerical'].unique() # already ordered
+    for trajectory in generated_trajectories_ids:
+        # Map each cell ID in the trajectory to its corresponding obs day information
+        trajectory_obs = adata.obs['day_numerical'].iloc[trajectory].values 
+        mapped_trajectories_obs.append(trajectory_obs)
+    matches = []
+    for lst in mapped_trajectories_obs:
+        # Count the matches and get an % of correctness
+        match_count = sum(1 for ref, val in zip(reference, lst) if ref == val)
+        matches.append(match_count/len(lst))
+    accuracy = sum(matches)/len(matches)
+    coverage = len(np.unique(generated_trajectories_ids))/num_cells
+    return accuracy, coverage 
 
 def custom_collate_fn(batch):
     """
@@ -512,7 +528,8 @@ if __name__ == "__main__":
         logger.info(f"epoch {epoch}: perplexity: {perplexity} eval_loss: {eval_loss}")
 
         # generate some sample trajectories
-        generate_sample_trajectories(adata, model, epoch)
+        accuracy, coverage = generate_sample_trajectories(adata, model, epoch)
+        logger.info(f"epoch {epoch}: accuracy: {accuracy} coverage: {coverage}")
 
 
         if args.with_tracking:
@@ -523,6 +540,8 @@ if __name__ == "__main__":
                     "train_loss": total_loss.item() / len(train_dataloader),
                     "epoch": epoch,
                     "step": completed_steps,
+                    "accuracy":accuracy,
+                    "coverage":coverage
                 },
                 step=completed_steps,
             )
