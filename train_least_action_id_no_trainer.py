@@ -54,7 +54,7 @@ def parse_args():
         help="Path to the model")
 
     parser.add_argument("--temperature",
-                        type=int,
+                        type=float,
                         default=0.8,
                         help="temperature")
 
