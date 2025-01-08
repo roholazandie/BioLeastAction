@@ -53,6 +53,11 @@ def parse_args():
         type=str,
         help="Path to the model")
 
+    parser.add_argument("--temperature",
+                        type=int,
+                        default=0.8,
+                        help="temperature")
+
     parser.add_argument("--num_train_epochs",
                         type=int,
                         default=1000000,
@@ -201,13 +206,13 @@ def parse_args():
 
     return parser.parse_args()
 
-def generate_sample_trajectories(adata, model, epoch):
+def generate_sample_trajectories(adata, model, epoch, temperature=0.8):
     num_cells = len(adata)
     days_values = sorted(list(set(adata.obs["day_numerical"])))
     adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
 
     generated_trajectories_ids = []
-    temperature = 0.8
+    temperature = temperature
     top_k = 10
     top_p = 0.3
     n_trajectories = 100
@@ -528,7 +533,7 @@ if __name__ == "__main__":
         logger.info(f"epoch {epoch}: perplexity: {perplexity} eval_loss: {eval_loss}")
 
         # generate some sample trajectories
-        accuracy, coverage = generate_sample_trajectories(adata, model, epoch)
+        accuracy, coverage = generate_sample_trajectories(adata, model, epoch, args.temperature)
         logger.info(f"epoch {epoch}: accuracy: {accuracy} coverage: {coverage}")
 
 
