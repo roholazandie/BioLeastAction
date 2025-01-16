@@ -14,9 +14,9 @@ import scvelo as scv
 import matplotlib.pyplot as plt
 import scanpy as sc
 from sklearn.decomposition import PCA
+from datasets import load_from_disk
 
-
-do_animation = True
+do_animation = False
 n_trajectories = 100
 
 # Load the checkpoint
@@ -25,19 +25,22 @@ model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
 # adata = sc.read_h5ad("data/reprogramming_schiebinger_scgen_exp_prob.h5ad")
-adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
+# adata = ad.read_h5ad("data/reprogramming_schiebinger_force_directed.h5ad")
+adata = sc.read_h5ad("data/reprogramming_schiebinger_clustering_pca_downsampled_1000.h5ad")
 
-train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
-                                              adata=adata,
-                                              embedding_size=768,
-                                              shuffle=True)
+# train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
+#                                               adata=adata,
+#                                               embedding_size=768,
+#                                               shuffle=True)
 
-
+dataset = load_from_disk('data/markovian_pca_subsample_1000_T=0.1_trajectories_dataset')
+train_dataset = dataset['train']
+eval_dataset = dataset['test']
 
 real_trajectories_ids = []
 for i, trajectory in enumerate(train_dataset):
     real_trajectories_ids.append(trajectory['input_ids'])
-    if i == 500:
+    if i == 100:
         break
 
 
@@ -125,7 +128,7 @@ else:
          dpi=300,
          figsize=(12, 12),
          ixs_legend_loc="upper right",
-         save="figures/generated_trajectories1.png"
+         save="figures/subsample_pca_1000.png"
          )
 
     plt.show()

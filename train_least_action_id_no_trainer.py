@@ -23,7 +23,7 @@ from transformers import (
 )
 from tqdm import tqdm
 from data_utils.cell_differentiation_datasets import get_dataset
-from models import GPT2LeastActionModel, GPT2IdLeastActionModel
+from models import GPT2LeastActionModel, GPT2IdLeastActionModel, GPT2DistanceLeastActionModel
 from torch.utils.data import DataLoader
 import scanpy as sc
 import wandb
@@ -347,7 +347,11 @@ if __name__ == "__main__":
         use_cache=False,
     )
 
-    model = GPT2IdLeastActionModel(config)
+    # model = GPT2IdLeastActionModel(config)
+    model = GPT2DistanceLeastActionModel(config,
+                                   cell_embeddings=torch.FloatTensor(adata.obsm["X_pca"]),
+                                   alpha=0.1,
+                                   )
     model.to(args.device)
 
     # Optimizer

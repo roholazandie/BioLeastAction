@@ -7,6 +7,7 @@ from utils.generate_utils import GenerationMixin
 from transformers import GPT2Model, GPT2PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions, BaseModelOutputWithPastAndCrossAttentions
 from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask_for_sdpa, _prepare_4d_causal_attention_mask_for_sdpa
 import torch.nn as nn
 # from transformers import logger
@@ -774,6 +775,175 @@ class GPT2IdLeastActionModel(GPT2PreTrainedModel):
             attentions=transformer_outputs.attentions,
             cross_attentions=transformer_outputs.cross_attentions,
         )
+
+
+
+
+class GPT2DistanceLeastActionModel(GPT2PreTrainedModel):
+    _tied_weights_keys = ["lm_head.weight"]
+
+    def __init__(self, config,
+                 cell_embeddings: torch.FloatTensor,   # [vocab_size, embedding_dim]
+                 alpha: float = 0.1,
+                 ):
+        super().__init__(config)
+        self.config = config
+        # Store the cell embeddings on the correct device.
+        # We'll register it as a buffer so it's moved with the model.
+        self.register_buffer("cell_embeddings", cell_embeddings)
+
+        # Balancing factor for distance penalty
+        self.alpha = alpha
+
+        self.transformer = GPT2Model(config)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.post_init()
+        # self.tie_weights()
+
+    def get_output_embeddings(self):
+        return self.lm_head
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
+
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
+        cell_type_ids = kwargs.get("cell_type_ids", None)
+        # Omit tokens covered by past_key_values
+        if past_key_values:
+            past_length = past_key_values[0][0].shape[2]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
+            if cell_type_ids is not None:
+                cell_type_ids = cell_type_ids[:, -input_ids.shape[1] :]
+
+        attention_mask = kwargs.get("attention_mask", None)
+        position_ids = kwargs.get("position_ids", None)
+
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                position_ids = position_ids[:, -input_ids.shape[1] :]
+        else:
+            position_ids = None
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "position_ids": position_ids,
+                "attention_mask": attention_mask,
+                "cell_type_ids": cell_type_ids,
+            }
+        )
+
+        return model_inputs
+
+
+    def forward(
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            cell_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+    ) -> CausalLMOutputWithCrossAttentions:
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        transformer_outputs = self.transformer(
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            token_type_ids=cell_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        hidden_states = transformer_outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+
+        loss = None
+        if labels is not None:
+            # move labels to correct device to enable model parallelism
+            labels = labels.to(lm_logits.device)
+            # Shift so that tokens < n predict n
+            shift_logits = lm_logits[..., :-1, :].contiguous() # [B, T-1, V]
+            shift_labels = labels[..., 1:].contiguous() # [B, T-1]
+            # standard cross-entropy loss
+            loss_fct = CrossEntropyLoss()
+            ce_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+            # === Distance-based penalty ===
+            # We'll compute an "expected embedding" under the predicted distribution
+            # and measure distance to the ground-truth cell embedding.
+            # 1) Convert shift_logits to probabilities
+            shift_probs = F.softmax(shift_logits, dim=-1)  # [B, T-1, V]
+
+            # 2) For each position, gather the ground-truth embeddings
+            # ground_truth_emb shape = [B, T-1, embedding_dim]
+            ground_truth_emb = self.cell_embeddings[shift_labels]
+
+            # 3) Compute expected embedding for each position:
+            #   expected_emb[b, t] = sum_{v=0}^{V-1} shift_probs[b, t, v] * cell_embeddings[v]
+            # We'll do it via batch-matrix multiplication or "einsum"
+            # shape(shift_probs) = [B, T-1, V]
+            # shape(cell_embeddings) = [V, embedding_dim]
+            # => shape(expected_emb) = [B, T-1, embedding_dim]
+            expected_emb = torch.einsum("btv,vd->btd", shift_probs, self.cell_embeddings)
+
+            # 4) Compute distance (e.g. MSE)
+            # shape of distance_loss = [B, T-1]
+            # we then mean() over B*(T-1)
+            dist_loss = F.mse_loss(expected_emb, ground_truth_emb, reduction="mean")
+
+            # Combine the two
+            loss = ce_loss + self.alpha * dist_loss
+
+
+        if not return_dict:
+            output = (lm_logits,) + transformer_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return CausalLMOutputWithCrossAttentions(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
+            cross_attentions=transformer_outputs.cross_attentions,
+        )
+
 
 
 

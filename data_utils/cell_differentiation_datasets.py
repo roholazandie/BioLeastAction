@@ -3,13 +3,10 @@ from torch.utils.data import IterableDataset
 from torch.utils.data.dataset import Dataset, Subset
 import torch.nn as nn
 from sklearn.neighbors import KDTree
-from tqdm import tqdm
-import torch.nn.functional as F
-import multiprocessing
-from datasets import Dataset as HFDataset
-from datasets import concatenate_datasets, Features, Sequence, Value
-import shutil
-import os
+import numpy as np
+from torch.utils.data import Dataset
+import torch
+import scanpy as sc
 import torch
 from datasets import Dataset as HFDataset, Features, Sequence, Value, Array2D
 
@@ -90,10 +87,8 @@ class TreeVectorsDataset(Dataset):
             "labels_embeds": self.vectors[idx][1:]
         }
 
-import numpy as np
-from torch.utils.data import Dataset
-import torch
-import scanpy as sc
+
+
 
 class AnnDataTrajectoryDataset(Dataset):
     def __init__(self, adata,
@@ -147,7 +142,7 @@ class AnnDataTrajectoryDataset(Dataset):
 
     def __len__(self) -> int:
         # return len(self.adata)
-        return 1000000
+        return 100000
 
     def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
         # Calculate correlation between current day and each cell in the next day
