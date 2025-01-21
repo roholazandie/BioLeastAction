@@ -58,6 +58,16 @@ def parse_args():
                         default=0.8,
                         help="temperature")
 
+    parser.add_argument("--adata_trajectory_dataset",
+                        type=str,
+                        default="adata_trajectory_dataset_hf",
+                        help="default adata_trajectory_dataset_hfs")
+    
+    parser.add_argument("--dataset_name",
+                        type=str,
+                        default="reprogramming_schiebinger_serum_computed.h5ad",
+                        help="file name of h5ad file")
+
     parser.add_argument("--num_train_epochs",
                         type=int,
                         default=1000000,
@@ -252,19 +262,33 @@ def generate_sample_trajectories(adata, model, epoch, temperature=0.8):
          ixs_legend_loc="upper right",
          save=f"{args.output_dir}/epoch_{epoch}.png"
          )
-    
+    reference = adata.obs['day_numerical'].unique()
+    print('reference:', reference)
     mapped_trajectories_obs = []
-    reference = adata.obs['day_numerical'].unique() # already ordered
     for trajectory in generated_trajectories_ids:
         # Map each cell ID in the trajectory to its corresponding obs day information
         trajectory_obs = adata.obs['day_numerical'].iloc[trajectory].values 
         mapped_trajectories_obs.append(trajectory_obs)
     matches = []
+    for predicted_days in mapped_trajectories_obs:
+        if len(predicted_days) != len(reference):
+            # skip or handle
+            continue
+        # compare predicted day vs. the corresponding day in reference
+        match_count = sum(
+            1 for ref_day, pred_day in zip(reference, predicted_days) if ref_day == pred_day
+        )
+        matches.append(match_count / len(predicted_days))
+    accuracy = sum(matches) / len(matches)
+    """
+    
+    
+    matches = []
     for lst in mapped_trajectories_obs:
         # Count the matches and get an % of correctness
         match_count = sum(1 for ref, val in zip(reference, lst) if ref == val)
         matches.append(match_count/len(lst))
-    accuracy = sum(matches)/len(matches)
+    accuracy = sum(matches)/len(matches)"""
     coverage = len(np.unique(generated_trajectories_ids))/num_cells
     return accuracy, coverage 
 
@@ -322,7 +346,7 @@ if __name__ == "__main__":
 
 
     # adata = sc.read_h5ad("data/reprogramming_schiebinger_force_directed_768.h5ad")
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+    adata = sc.read_h5ad(f"data/{args.dataset_name}")
 
     # assert adata.obsm["X_pca"].shape[1] == args.hidden_size, f"PCA dimension {adata.obsm['X_pca'].shape[1]} is not equal to hidden size {args.hidden_size}"
 
@@ -334,7 +358,7 @@ if __name__ == "__main__":
                                                   embedding_size=adata.obsm["X_pca"].shape[1],
                                                   shuffle=True)
     else:
-        dataset = load_from_disk('data/adata_trajectory_dataset_hf')
+        dataset = load_from_disk(f'data/{args.adata_trajectory_dataset}')
         train_dataset = dataset['train']
         eval_dataset = dataset['test']
 
