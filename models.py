@@ -797,6 +797,8 @@ class GPT2DistanceLeastActionModel(GPT2PreTrainedModel):
 
         self.transformer = GPT2Model(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.dist_loss_value = None
+        self.ce_loss_value = None
         self.post_init()
         # self.tie_weights()
 
@@ -927,6 +929,8 @@ class GPT2DistanceLeastActionModel(GPT2PreTrainedModel):
             # we then mean() over B*(T-1)
             dist_loss = F.mse_loss(expected_emb, ground_truth_emb, reduction="mean")
 
+            self.dist_loss_value = dist_loss
+            self.ce_loss_value = ce_loss
             # Combine the two
             loss = ce_loss + self.alpha * dist_loss
 
@@ -934,7 +938,6 @@ class GPT2DistanceLeastActionModel(GPT2PreTrainedModel):
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
-
         return CausalLMOutputWithCrossAttentions(
             loss=loss,
             logits=lm_logits,

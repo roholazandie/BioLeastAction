@@ -52,10 +52,20 @@ def parse_args():
     parser.add_argument("--model_name",
         type=str,
         help="Path to the model")
+    
+    parser.add_argument("--alpha",
+                        type=float,
+                        default=0.1,
+                        help="alpha")
+
+    parser.add_argument("--dynamic_alpha",
+                        action="store_true",
+                        help="change alpha while training or not")
+
 
     parser.add_argument("--num_train_epochs",
                         type=int,
-                        default=1000000,
+                        default=100,
                         help="Number of epochs")
 
     parser.add_argument("--max_train_steps",
@@ -201,18 +211,19 @@ def parse_args():
 
     return parser.parse_args()
 
-def generate_sample_trajectories(adata, model, epoch):
+def generate_sample_trajectories(adata, model, epoch, temperature=0.8):
+    num_cells = len(adata)
     days_values = sorted(list(set(adata.obs["day_numerical"])))
     adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
 
     generated_trajectories_ids = []
-    temperature = 0.8
+    temperature = temperature
     top_k = 10
     top_p = 0.3
     n_trajectories = 100
 
     generation_config = GenerationConfig(
-        max_length=38,
+        max_length=args.max_length,
         temperature=temperature,
         top_k=top_k,
         top_p=top_p,
@@ -246,6 +257,33 @@ def generate_sample_trajectories(adata, model, epoch):
          ixs_legend_loc="upper right",
          save=f"{args.output_dir}/epoch_{epoch}.png"
          )
+    reference = adata.obs['day_numerical'].unique()
+    print('reference:', reference)
+    mapped_trajectories_obs = []
+    for trajectory in generated_trajectories_ids:
+        # Map each cell ID in the trajectory to its corresponding obs day information
+        trajectory_obs = adata.obs['day_numerical'].iloc[trajectory].values 
+        mapped_trajectories_obs.append(trajectory_obs)
+    matches = []
+    for predicted_days in mapped_trajectories_obs:
+        if len(predicted_days) != len(reference):
+            # skip or handle
+            continue
+        # compare predicted day vs. the corresponding day in reference
+        match_count = sum(
+            1 for ref_day, pred_day in zip(reference, predicted_days) if ref_day == pred_day
+        )
+        matches.append(match_count / len(predicted_days))
+    accuracy = sum(matches) / len(matches)
+    """
+    matches = []
+    for lst in mapped_trajectories_obs:
+        # Count the matches and get an % of correctness
+        match_count = sum(1 for ref, val in zip(reference, lst) if ref == val)
+        matches.append(match_count/len(lst))
+    accuracy = sum(matches)/len(matches)"""
+    coverage = len(np.unique(generated_trajectories_ids))/num_cells
+    return accuracy, coverage 
 
 def custom_collate_fn(batch):
     """
@@ -277,6 +315,8 @@ def clean_old_checkpoints(output_dir, n):
         shutil.rmtree(checkpoint_path)
         print(f"Removed old checkpoint: {checkpoint_path}")
 
+def linear_alpha_schedule(epoch, total_epochs, start_alpha, end_alpha):
+    return start_alpha + (end_alpha - start_alpha) * (epoch / total_epochs)
 
 if __name__ == "__main__":
     # set the random seed for reproducibility
@@ -350,7 +390,7 @@ if __name__ == "__main__":
     # model = GPT2IdLeastActionModel(config)
     model = GPT2DistanceLeastActionModel(config,
                                    cell_embeddings=torch.FloatTensor(adata.obsm["X_pca"]),
-                                   alpha=0.1,
+                                   alpha=args.alpha,
                                    )
     model.to(args.device)
 
@@ -468,13 +508,25 @@ if __name__ == "__main__":
             active_dataloader = train_dataloader
         for step, batch in enumerate(active_dataloader):
             with accelerator.accumulate(model):
-                outputs = model(**batch)
+                outputs= model(**batch)
                 loss = outputs.loss
+                if model.dist_loss_value is not None and model.ce_loss_value is not None:
+                    wandb.log({
+                        "dist_loss": model.dist_loss_value.item(),
+                        "ce_loss": model.ce_loss_value.item()
+                    }, step=completed_steps)
                 # We keep track of the loss at each epoch
                 if args.with_tracking:
                     total_loss += loss.detach().float()
                 accelerator.backward(loss)
                 optimizer.step()
+
+
+                if args.dynamic_alpha:
+                    #print('changing alpha...')
+                    model.alpha = linear_alpha_schedule(epoch, total_epochs=args.num_train_epochs, start_alpha=args.alpha, end_alpha=1)
+                    #print(f"Epoch {epoch}, Alpha: {model.alpha:.5f}")
+
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
@@ -502,7 +554,11 @@ if __name__ == "__main__":
         for step, batch in enumerate(eval_dataloader):
             with torch.no_grad():
                 outputs = model(**batch)
-
+            if model.dist_loss_value is not None and model.ce_loss_value is not None:
+                    wandb.log({
+                        "dist_loss": model.dist_loss_value.item(),
+                        "ce_loss": model.ce_loss_value.item()
+                    }, step=step)
             loss = outputs.loss
             losses.append(accelerator.gather_for_metrics(loss.repeat(args.per_device_eval_batch_size)))
 
@@ -516,8 +572,8 @@ if __name__ == "__main__":
         logger.info(f"epoch {epoch}: perplexity: {perplexity} eval_loss: {eval_loss}")
 
         # generate some sample trajectories
-        generate_sample_trajectories(adata, model, epoch)
-
+        accuracy, coverage = generate_sample_trajectories(adata, model, epoch)
+        logger.info(f"epoch {epoch}: accuracy: {accuracy} coverage: {coverage}")
 
         if args.with_tracking:
             accelerator.log(
@@ -530,7 +586,7 @@ if __name__ == "__main__":
                 },
                 step=completed_steps,
             )
-
+        
         if args.checkpointing_steps == "epoch":
             output_dir = f"epoch_{epoch}"
             if args.output_dir is not None:
@@ -540,6 +596,19 @@ if __name__ == "__main__":
 
             # Clean up old checkpoints
             clean_old_checkpoints(args.output_dir, n=3)  # Retain the last 5 checkpoints
+        wandb.log(
+                {
+                    "perplexity": perplexity,
+                    "eval_loss": eval_loss,
+                    "train_loss": total_loss.item() / len(train_dataloader),
+                    "epoch": epoch,
+                    "step": completed_steps,
+                    "accuracy": accuracy,
+                    "coverage": coverage,
+                    "alpha":model.alpha
+                },
+                step=completed_steps,
+            )
 
     if args.with_tracking:
         accelerator.end_training()
