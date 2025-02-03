@@ -933,6 +933,7 @@ class GPT2DistanceLeastActionModel(GPT2PreTrainedModel):
             self.ce_loss_value = ce_loss
             # Combine the two
             loss = ce_loss + self.alpha * dist_loss
+            # loss = dist_loss
 
 
         if not return_dict:
