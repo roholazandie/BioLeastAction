@@ -3,10 +3,14 @@ import torch
 import numpy as np
 from transformers import GPT2Model, GPT2Config, GPT2LMHeadModel, TrainingArguments, Trainer
 from data_utils.cell_differentiation_datasets import get_dataset
-from models import GPT2LeastActionModel, GPT2IdLeastActionModel, GPT2CellLeastActionModel
+from models import GPT2LeastActionModel, GPT2IdLeastActionModel
 import scanpy as sc
 import wandb
 
+
+def compute_metrics(preds, labels):
+    print("Computing metrics")
+    return {}
 
 def set_seed(seed: int) -> None:
     """Set random seed
@@ -50,10 +54,10 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    os.environ["WANDB_PROJECT"] = "BioLeastActionCell"  # log to your project
+    os.environ["WANDB_PROJECT"] = "BioLeastAction2"  # log to your project
     os.environ["WANDB_LOG_MODEL"] = "all"  # log your models
 
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_768.h5ad")
+    adata = sc.read_h5ad("../data/reprogramming_schiebinger_force_directed_768.h5ad")
 
     train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
                                               adata=adata,
@@ -63,44 +67,43 @@ if __name__ == "__main__":
     num_cells = len(adata)
     num_cell_types = len(set(adata.obs['cell_sets']))
 
-    assert args.hidden_size < adata.shape[1], "The hidden size must be less than the number of genes"
-    assert args.hidden_size == adata.obsm['X_pca'].shape[1], "The hidden size must be equal to the embedding size"
-
     config = GPT2Config(
         n_positions=args.max_length,
         n_embd=args.hidden_size,
         n_layer=args.num_hidden_layers,
         n_head=args.num_attention_heads,
-        vocab_size=num_cells,
-        cell_type_vocab_size=num_cell_types,
+        vocab_size=num_cells + num_cell_types, # number of cells and cell types
         use_cache=False,
     )
 
-    model = GPT2CellLeastActionModel(config)
-    # model = GPT2CellLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
+    model = GPT2IdLeastActionModel(config)
+    # model = GPT2IdLeastActionModel.from_pretrained("checkpoints/all_cells_vocabulary_cell_type/checkpoint-15000")
     model.to(args.device)
 
-    working_dir = f"{args.output_dir}/all_cells_vocabulary_cell_type_cell_embedding"
+    working_dir = f"{args.output_dir}/all_cells_vocab_cell_type_6layers"
 
     training_args = TrainingArguments(
         output_dir=working_dir,
         overwrite_output_dir=True,
         num_train_epochs=args.n_epochs,
         per_device_train_batch_size=50, #350
-        per_device_eval_batch_size=50, # 300
+        per_device_eval_batch_size=10, # 300
         # gradient_accumulation_steps=4,
         learning_rate=args.learning_rate,
+        # weight_decay=1e-10,
+        # max_grad_norm=0.1,
+        # warmup_ratio=0.1,
         logging_dir=working_dir,
-        dataloader_num_workers=20,
+        dataloader_num_workers=5,
         logging_steps=10,
         save_strategy="steps",  # save a checkpoint every save_steps
         save_steps=500,  #int(args.save_steps * len(train_dataset)),
         save_total_limit=5,
         eval_strategy="steps",  # evaluation is done every eval_steps
-        eval_steps=2000, #int(0.25 * len(train_dataset)),
+        eval_steps=100, #int(0.25 * len(train_dataset)),
         eval_accumulation_steps=1,
         load_best_model_at_end=False,
-        fp16=True,
+        # fp16=True,
         report_to=None,
     )
 
@@ -109,7 +112,7 @@ if __name__ == "__main__":
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        # optimizers=(optimizer, scheduler)
+        # compute_metrics=compute_metrics,
     )
 
     # Train the model

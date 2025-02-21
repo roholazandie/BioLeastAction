@@ -24,14 +24,14 @@ def process_chunk_joblib(start_idx, end_idx, position):
     return samples
 
 # Load your data
-adata = sc.read_h5ad("data/reprogramming_schiebinger_clustering_umap_downsampled_5000.h5ad")
+adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # Set parameters
 T = 0.1
 normalize_embeddings = True
 markovian = True
 tau = 1
-C = 1
+C = 5
 num_processes = 45
 
 # Instantiate your AnnDataTrajectoryDataset
@@ -56,7 +56,6 @@ features = Features({
     "input_ids": Sequence(Value(dtype='int64')),
     "labels": Sequence(Value(dtype='int64')),
     "cell_type_ids": Sequence(Value(dtype='int64')),
-    # "cell_embeddings": Sequence(Value(dtype='float32', shape=(embedding_size,)))
 })
 
 # Split indices into chunks and assign positions for progress bars
@@ -96,4 +95,4 @@ trajectories_dataset = DatasetDict({
 })
 
 # Save the entire DatasetDict to disk
-trajectories_dataset.save_to_disk('data/markovian_umap_subsample_5000_T=0.1_trajectories_dataset')
+trajectories_dataset.save_to_disk(f'data/adata_trajectory_dataset_hf_lowtemp')

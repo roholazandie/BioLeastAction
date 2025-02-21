@@ -35,6 +35,153 @@ def map_embeddings_to_umap(embeddings: List[np.ndarray], basis: str = "umap") ->
     return embedding_2d
 
 
+# def plot(
+#         adata: AnnData = None,
+#         sims: List[np.ndarray] = None,
+#         trajectory_embeddings: List[List[np.ndarray]] = None,
+#         basis: str = "umap",
+#         cmap: Union[str, LinearSegmentedColormap] = "gnuplot",
+#         linewidth: float = 1.0,
+#         linealpha: float = 0.3,
+#         ixs_legend_loc: Optional[str] = None,
+#         figsize: Optional[Tuple[float, float]] = None,
+#         dpi: Optional[int] = None,
+#         save: Optional[Union[str, pathlib.Path]] = None,
+#         background_color: Optional[str] = None,
+#         **kwargs: Any,
+# ) -> None:
+#     """Plot simulated random walks.
+#
+#     Parameters
+#     ----------
+#     sims
+#         The simulated random walks.
+#     basis
+#         Basis used for plotting.
+#     cmap
+#         Colormap for the random walks.
+#     linewidth
+#         Line width for the random walks.
+#     linealpha
+#         Line alpha.
+#     ixs_legend_loc
+#         Position of the legend describing start- and endpoints.
+#     %(plotting)s
+#     kwargs
+#         Keyword arguments for :func:`~scvelo.pl.scatter`.
+#
+#     Returns
+#     -------
+#     %(just_plots)s
+#     """
+#     # emb = _get_basis(self._adata, basis)
+#
+#     if isinstance(cmap, str):
+#         cmap = plt.get_cmap(cmap)
+#     if not isinstance(cmap, LinearSegmentedColormap):
+#         if not hasattr(cmap, "colors"):
+#             raise AttributeError("Unable to create a colormap, `cmap` does not have attribute `colors`.")
+#         cmap = LinearSegmentedColormap.from_list(
+#             "random_walk",
+#             colors=cmap.colors,
+#             N=max(map(len, sims)),
+#         )
+#
+#     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+#
+#
+#     if trajectory_embeddings is not None:
+#         scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
+#
+#         for i, embs in enumerate(trajectory_embeddings):
+#             x = [emb[0] for emb in embs]
+#             y = [emb[0] for emb in embs]
+#             points = np.array([x, y]).T.reshape(-1, 1, 2)
+#             segments = np.concatenate([points[:-1], points[1:]], axis=1)
+#             n_seg = len(segments)
+#
+#             lc = LineCollection(
+#                 segments,
+#                 linewidths=linewidth,
+#                 colors=[cmap(float(i) / n_seg) for i in range(n_seg)],
+#                 alpha=linealpha,
+#                 zorder=2,
+#             )
+#             ax.add_collection(lc)
+#
+#         for ix in [0, -1]:
+#             emb = np.array([trajectory_embedding[ix] for trajectory_embedding in trajectory_embeddings])
+#             from scvelo.plotting.utils import default_size, plot_outline
+#
+#             plot_outline(
+#                 x=emb[:, 0],
+#                 y=emb[:, 1],
+#                 outline_color=("black", to_hex(cmap(float(abs(ix))))),
+#                 kwargs={
+#                     "s": kwargs.get("size", default_size(adata)) * 1.1,
+#                     "alpha": 0.9,
+#                 },
+#                 ax=ax,
+#                 zorder=4,
+#             )
+#
+#     else:
+#         # Set the background color if specified
+#         if background_color is not None:
+#             ax.set_facecolor(background_color)
+#             fig.patch.set_facecolor(background_color)
+#
+#         scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
+#
+#         emb = adata.obsm[f"X_{basis}"]
+#         # logg.info("Plotting random walks")
+#         for sim in sims:
+#             x = emb[sim][:, 0]
+#             y = emb[sim][:, 1]
+#             points = np.array([x, y]).T.reshape(-1, 1, 2)
+#             segments = np.concatenate([points[:-1], points[1:]], axis=1)
+#             n_seg = len(segments)
+#
+#             lc = LineCollection(
+#                 segments,
+#                 linewidths=linewidth,
+#                 colors=[cmap(float(i) / n_seg) for i in range(n_seg)],
+#                 alpha=linealpha,
+#                 zorder=2,
+#             )
+#             ax.add_collection(lc)
+#
+#         for ix in [0, -1]:
+#             ixs = [sim[ix] for sim in sims]
+#             from scvelo.plotting.utils import default_size, plot_outline
+#
+#             plot_outline(
+#                 x=emb[ixs][:, 0],
+#                 y=emb[ixs][:, 1],
+#                 outline_color=("black", to_hex(cmap(float(abs(ix))))),
+#                 kwargs={
+#                     "s": kwargs.get("size", default_size(adata)) * 1.1,
+#                     "alpha": 0.9,
+#                 },
+#                 ax=ax,
+#                 zorder=4,
+#             )
+#
+#     if ixs_legend_loc not in (None, "none"):
+#         from cellrank.pl._utils import _position_legend
+#
+#         h1 = ax.scatter([], [], color=cmap(0.0), label="start")
+#         h2 = ax.scatter([], [], color=cmap(1.0), label="stop")
+#         legend = ax.get_legend()
+#         if legend is not None:
+#             ax.add_artist(legend)
+#         _position_legend(ax, legend_loc=ixs_legend_loc, handles=[h1, h2])
+#     # tight the layout
+#     plt.tight_layout()
+#     if save is not None:
+#         plt.savefig(save, dpi=300)
+
+
 def plot(
         adata: AnnData = None,
         sims: List[np.ndarray] = None,
@@ -50,14 +197,16 @@ def plot(
         background_color: Optional[str] = None,
         **kwargs: Any,
 ) -> None:
-    """Plot simulated random walks.
+    """Plot simulated random walks with arrow streamlines similar to a tensor graph.
 
     Parameters
     ----------
     sims
         The simulated random walks.
+    trajectory_embeddings
+        List of trajectories to plot.
     basis
-        Basis used for plotting.
+        Dimensionality reduction basis.
     cmap
         Colormap for the random walks.
     linewidth
@@ -66,16 +215,17 @@ def plot(
         Line alpha.
     ixs_legend_loc
         Position of the legend describing start- and endpoints.
-    %(plotting)s
+    figsize
+        Figure size.
+    dpi
+        Dots per inch for the figure.
+    save
+        Save path for the figure.
+    background_color
+        Background color.
     kwargs
-        Keyword arguments for :func:`~scvelo.pl.scatter`.
-
-    Returns
-    -------
-    %(just_plots)s
+        Additional keyword arguments for scv.pl.scatter.
     """
-    # emb = _get_basis(self._adata, basis)
-
     if isinstance(cmap, str):
         cmap = plt.get_cmap(cmap)
     if not isinstance(cmap, LinearSegmentedColormap):
@@ -84,22 +234,23 @@ def plot(
         cmap = LinearSegmentedColormap.from_list(
             "random_walk",
             colors=cmap.colors,
-            N=max(map(len, sims)),
+            N=max(map(len, sims)) if sims is not None else 100,
         )
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
-
+    # Plot trajectories if provided.
     if trajectory_embeddings is not None:
         scv.pl.scatter(adata, basis=basis, show=False, ax=ax, **kwargs)
-
         for i, embs in enumerate(trajectory_embeddings):
+            # Extract x and y coordinates.
             x = [emb[0] for emb in embs]
-            y = [emb[0] for emb in embs]
+            y = [emb[1] for emb in embs]
             points = np.array([x, y]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             n_seg = len(segments)
 
+            # Draw the trajectory as a line collection.
             lc = LineCollection(
                 segments,
                 linewidths=linewidth,
@@ -109,10 +260,29 @@ def plot(
             )
             ax.add_collection(lc)
 
+            # For every 5th trajectory, add an arrow using quiver.
+            if i % 1 == 0 and len(embs) > 1:
+                arrow_idx = len(embs) // 2  # choose the middle segment
+                start = embs[arrow_idx]
+                end = embs[arrow_idx + 1] if arrow_idx + 1 < len(embs) else embs[arrow_idx]
+                dx = end[0] - start[0]
+                dy = end[1] - start[1]
+                # Use quiver to draw the arrow. Adjust headwidth and width as desired.
+                ax.quiver(
+                    start[0], start[1],
+                    dx, dy,
+                    angles='xy', scale_units='xy', scale=1,
+                    width=0.005,
+                    headwidth=3, headlength=5, headaxislength=4,
+                    color=cmap(float(arrow_idx) / n_seg),
+                    alpha=1.0,
+                    zorder=3,
+                )
+
+        # Plot endpoints using scv plotting utility.
         for ix in [0, -1]:
             emb = np.array([trajectory_embedding[ix] for trajectory_embedding in trajectory_embeddings])
             from scvelo.plotting.utils import default_size, plot_outline
-
             plot_outline(
                 x=emb[:, 0],
                 y=emb[:, 1],
@@ -124,18 +294,16 @@ def plot(
                 ax=ax,
                 zorder=4,
             )
-
     else:
-        # Set the background color if specified
+        # Set the background color if specified.
         if background_color is not None:
             ax.set_facecolor(background_color)
             fig.patch.set_facecolor(background_color)
 
         scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
-
         emb = adata.obsm[f"X_{basis}"]
-        # logg.info("Plotting random walks")
-        for sim in sims:
+
+        for j, sim in enumerate(sims):
             x = emb[sim][:, 0]
             y = emb[sim][:, 1]
             points = np.array([x, y]).T.reshape(-1, 1, 2)
@@ -151,10 +319,27 @@ def plot(
             )
             ax.add_collection(lc)
 
+            # For every 5th simulated walk, add an arrow.
+            if j % 5 == 0 and len(sim) > 1:
+                arrow_idx = len(sim) // 2  # choose the middle segment
+                start = emb[sim][arrow_idx]
+                end = emb[sim][arrow_idx + 1] if arrow_idx + 1 < len(sim) else emb[sim][arrow_idx]
+                dx = end[0] - start[0]
+                dy = end[1] - start[1]
+                ax.quiver(
+                    start[0], start[1],
+                    dx, dy,
+                    angles='xy', scale_units='xy', scale=1,
+                    width=0.005,
+                    headwidth=3, headlength=5, headaxislength=4,
+                    color=cmap(float(arrow_idx) / n_seg),
+                    alpha=1.0,
+                    zorder=3,
+                )
+
         for ix in [0, -1]:
             ixs = [sim[ix] for sim in sims]
             from scvelo.plotting.utils import default_size, plot_outline
-
             plot_outline(
                 x=emb[ixs][:, 0],
                 y=emb[ixs][:, 1],
@@ -167,16 +352,16 @@ def plot(
                 zorder=4,
             )
 
+    # Add legend for start/stop markers if required.
     if ixs_legend_loc not in (None, "none"):
         from cellrank.pl._utils import _position_legend
-
         h1 = ax.scatter([], [], color=cmap(0.0), label="start")
         h2 = ax.scatter([], [], color=cmap(1.0), label="stop")
         legend = ax.get_legend()
         if legend is not None:
             ax.add_artist(legend)
         _position_legend(ax, legend_loc=ixs_legend_loc, handles=[h1, h2])
-    # tight the layout
+
     plt.tight_layout()
     if save is not None:
         plt.savefig(save, dpi=300)
@@ -369,7 +554,6 @@ def plot_with_curvature(
     cmap: Union[str, LinearSegmentedColormap] = "gnuplot",
     linewidth: float = 1.0,
     linealpha: float = 0.3,
-    ixs_legend_loc: Optional[str] = None,
     figsize: Optional[Tuple[float, float]] = None,
     dpi: Optional[int] = None,
     save: Optional[Union[str, pathlib.Path]] = None,
@@ -392,8 +576,6 @@ def plot_with_curvature(
         Line width for the random walks.
     linealpha
         Line alpha.
-    ixs_legend_loc
-        Position of the legend describing start- and endpoints.
     %(plotting)s
     kwargs
         Keyword arguments for :func:`~scvelo.pl.scatter`.
@@ -418,9 +600,7 @@ def plot_with_curvature(
 
     # Flatten all curvature values to compute global min and max for normalization
     all_curvatures = [c for curvature_list in curvatures for c in curvature_list]
-    curvature_min = min(all_curvatures)
-    curvature_max = max(all_curvatures)
-    norm = Normalize(vmin=curvature_min, vmax=curvature_max)
+    norm = Normalize(vmin=-2, vmax=2)  # Set legend range from -2 to 2
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
@@ -428,6 +608,9 @@ def plot_with_curvature(
     if background_color is not None:
         ax.set_facecolor(background_color)
         fig.patch.set_facecolor(background_color)
+
+    # Remove `ixs_legend_loc` from kwargs if present
+    kwargs.pop("ixs_legend_loc", None)
 
     scv.pl.scatter(adata, basis=f"X_{basis}", show=False, ax=ax, **kwargs)
 
@@ -450,26 +633,22 @@ def plot_with_curvature(
         )
         ax.add_collection(lc)
 
-    if ixs_legend_loc not in (None, "none"):
-        from cellrank.pl._utils import _position_legend
-
-        h1 = ax.scatter([], [], color=cmap(0.0), label="start")
-        h2 = ax.scatter([], [], color=cmap(1.0), label="stop")
-        legend = ax.get_legend()
-        if legend is not None:
-            ax.add_artist(legend)
-        _position_legend(ax, legend_loc=ixs_legend_loc, handles=[h1, h2])
-
     # Add colorbar for curvature
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax)
-    cbar.set_label("Curvature")
+    cbar.set_label("Curvature", fontsize=12, fontweight="bold")  # Bold and size 12
+
+    # Set colorbar ticks to bold and font size 12
+    cbar.ax.tick_params(labelsize=12)
+    for label in cbar.ax.get_yticklabels():
+        label.set_fontweight("bold")
 
     # Tighten the layout
     plt.tight_layout()
     if save is not None:
         plt.savefig(save, dpi=300)
+
 
 
 def animate_with_curvature(

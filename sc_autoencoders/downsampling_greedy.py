@@ -71,7 +71,7 @@ def greedy_downsample(adata, target_size):
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+    adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
     target_size = 2000
     downsampled_indices = greedy_downsample(adata, target_size)

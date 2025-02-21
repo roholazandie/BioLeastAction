@@ -1,24 +1,17 @@
-import torch
 import numpy as np
-import anndata as ad
 from tqdm import tqdm
 from data_utils.cell_differentiation_datasets import get_dataset
-from models import GPT2IdLeastActionModel
-import cellrank as cr
-import scipy
 
-from plots.plot_trajectories import map_embeddings_to_umap, plot, animate_simulated_trajectories
-import scvelo as scv
 import matplotlib.pyplot as plt
 import scanpy as sc
-from train_least_action_id import set_seed
+from archive.train_least_action_id import set_seed
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
 
 n_trajectories = 100
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 set_seed(42)
 

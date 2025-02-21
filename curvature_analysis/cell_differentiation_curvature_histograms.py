@@ -1,16 +1,15 @@
 import pickle
 from datasets import load_from_disk
 import scanpy as sc
-from plots.plot_trajectories import plot_with_curvature, animate_with_curvature
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import Normalize
 from matplotlib.cm import get_cmap
 
 # Load data
-G = pickle.load(open('data/train_graph_curvature.pickle', 'rb'))
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
-dataset = load_from_disk('data/adata_trajectory_dataset_hf')
+G = pickle.load(open('../data/train_graph_curvature.pickle', 'rb'))
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
+dataset = load_from_disk('../data/adata_trajectory_dataset_hf')
 train_dataset = dataset['train']
 eval_dataset = dataset['test']
 

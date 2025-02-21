@@ -25,7 +25,7 @@ def downsample_with_clustering(adata, target_size):
 
 
 if __name__ == "__main__":
-    adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+    adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
     target_size = 5000
     downsampled_indices = downsample_with_clustering(adata, target_size)

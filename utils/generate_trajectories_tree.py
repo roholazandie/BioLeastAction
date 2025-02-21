@@ -1,17 +1,15 @@
 import torch
 import numpy as np
 import scanpy as sc
-from plots.plot_trajectories import plot
 from plots.plot_graph import extract_force_directed_graph
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy.spatial.distance import euclidean
 from models import GPT2LeastActionModel
 from data_utils.cell_differentiation_datasets import get_dataset
-import anndata as ad
 import scvelo as scv
 import scipy
-from train_least_action import set_seed
+from archive.train_least_action import set_seed
 
 set_seed(42)
 

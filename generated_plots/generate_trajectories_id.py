@@ -20,7 +20,7 @@ do_animation = False
 n_trajectories = 100
 
 # Load the checkpoint
-checkpoint_path = "checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
+checkpoint_path = "../checkpoints/all_cells_vocabulary/checkpoint-44500"  # specify the checkpoint path here
 model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 

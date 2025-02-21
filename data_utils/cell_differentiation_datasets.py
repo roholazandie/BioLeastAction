@@ -129,7 +129,10 @@ class AnnDataTrajectoryDataset(Dataset):
         self.T = T
 
         self.cell_types = list(set(self.adata.obs['cell_sets']))
-        self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
+        # self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
+        # the cell types to index should be fixed
+        self.cell_types_to_idx = {'MEF/other': 0, 'MET': 1, 'Epithelial': 2, 'IPS': 3,
+                                  'Trophoblast': 4, 'Stromal': 5, 'Neural': 6}
 
         # Normalize the embeddings
         if normalize_embeddings:

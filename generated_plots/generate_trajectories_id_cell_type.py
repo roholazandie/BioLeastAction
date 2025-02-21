@@ -1,20 +1,14 @@
 import torch
 import numpy as np
-import anndata as ad
 from tqdm import tqdm
 from transformers import GenerationConfig
 
-from data_utils.cell_differentiation_datasets import get_dataset
 from models import GPT2IdLeastActionModel
-import cellrank as cr
-import scipy
 
-from datasets import load_from_disk
-from plots.plot_trajectories import map_embeddings_to_umap, plot, animate_simulated_trajectories
-import scvelo as scv
+from plots.plot_trajectories import plot, animate_simulated_trajectories
 import matplotlib.pyplot as plt
 import scanpy as sc
-from train_least_action_id import set_seed
+from archive.train_least_action_id import set_seed
 
 
 do_animation = True
@@ -25,7 +19,7 @@ checkpoint_path = "/home/rohola/checkpoints/step_5000"
 model = GPT2IdLeastActionModel.from_pretrained(checkpoint_path)
 model.to('cuda:0')
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 # sc.pp.neighbors(adata, n_pcs=30, n_neighbors=30, random_state=0)
 # sc.tl.umap(adata, n_components=30)

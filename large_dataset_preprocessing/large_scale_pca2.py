@@ -9,7 +9,7 @@ split_by_days = True
 if split_by_embryo:
 
     # Create a directory to save the split datasets
-    output_dir = "./data/mouse_embryo/split_embryos/"
+    output_dir = "../data/mouse_embryo/split_embryos/"
     os.makedirs(output_dir, exist_ok=True)
     #{'embryo_53', 'embryo_54', 'embryo_55', 'embryo_56', 'embryo_57', 'embryo_58', 'embryo_59', 'embryo_60', 'embryo_61', 'embryo_62', 'embryo_63', 'embryo_64'}
     # {'embryo_65', 'embryo_66', 'embryo_67', 'embryo_68', 'embryo_69', 'embryo_70', 'embryo_71', 'embryo_72', 'embryo_73', 'embryo_74'}

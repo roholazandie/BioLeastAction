@@ -7,11 +7,9 @@ import pickle
 import numpy as np
 from plotly_visualize import visualize_graph
 
-
-
 generate_trajectories = False
 
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 if generate_trajectories:
     train_dataset, eval_dataset = get_dataset(dataset_name="reprogramming_schiebinger",
@@ -21,14 +19,13 @@ if generate_trajectories:
                                                       embedding_size=adata.obsm["X_pca"].shape[1],
                                                       shuffle=True)
 else:
-    dataset = load_from_disk('data/adata_trajectory_dataset_hf')
+    dataset = load_from_disk('../data/adata_trajectory_dataset_hf')
     train_dataset = dataset['train']
     eval_dataset = dataset['test']
 
 
 # Initialize an empty directed graph
 G = nx.DiGraph()
-sample_size = 1000
 # Iterate over paths in the eval_dataset to construct the graph
 for j, path in enumerate(train_dataset):
     input_ids = path['input_ids']
@@ -45,10 +42,10 @@ curvature_dict = {(i, j): C[i, j] for i, j in G.edges()}
 nx.set_edge_attributes(G, curvature_dict, 'curvature')
 
 # save the graph
-pickle.dump(G, open('data/train_graph_curvature.pickle', 'wb'))
+pickle.dump(G, open('../data/train_graph_curvature.pickle', 'wb'))
 
 
-G = pickle.load(open('data/train_graph_curvature.pickle', 'rb'))
+G = pickle.load(open('../data/train_graph_curvature.pickle', 'rb'))
 # print(G.edges[5261, 9657]['curvature'])
 
 
