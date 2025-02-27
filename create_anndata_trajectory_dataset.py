@@ -1,5 +1,5 @@
 from datasets import Dataset as HFDataset
-from datasets import concatenate_datasets, Features, Sequence, Value, DatasetDict, DatasetInfo
+from datasets import Features, Sequence, Value, DatasetDict, DatasetInfo
 import torch
 import scanpy as sc
 from joblib import Parallel, delayed
@@ -24,7 +24,8 @@ def process_chunk_joblib(start_idx, end_idx, position):
     return samples
 
 # Load your data
-adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+# adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
+adata = sc.read_h5ad("data/mouse_embryo/mouse_embryo_0.2.h5ad")
 
 # Set parameters
 T = 0.1
@@ -95,4 +96,5 @@ trajectories_dataset = DatasetDict({
 })
 
 # Save the entire DatasetDict to disk
-trajectories_dataset.save_to_disk(f'data/adata_trajectory_dataset_hf_lowtemp')
+# trajectories_dataset.save_to_disk(f'data/adata_trajectory_dataset_hf_lowtemp')
+trajectories_dataset.save_to_disk(f'data/mouse_embryo/mouse_embryo_trajectory_dataset_hf')

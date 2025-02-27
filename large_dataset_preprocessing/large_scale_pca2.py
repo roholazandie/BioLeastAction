@@ -28,7 +28,7 @@ if split_by_embryo:
 
 elif split_by_days:
     # Create a directory to save the split datasets
-    output_dir = "./data/mouse_embryo/split_days/"
+    output_dir = "/media/rohola/ssd_storage/mouse_embryo/split_days"
     os.makedirs(output_dir, exist_ok=True)
 
     # Iterate through unique day IDs and save each subset

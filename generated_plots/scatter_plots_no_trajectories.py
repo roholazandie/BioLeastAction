@@ -9,7 +9,7 @@ from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import scvelo as scv
 from scipy.spatial import KDTree
 
-dataset = "reprogramming_schiebinger"
+dataset = "mouse_embryo"
 
 if dataset == "random_tree_vectors":
     branching_factors = [2, 3, 4, 8, 2]
@@ -28,7 +28,15 @@ elif dataset == "reprogramming_schiebinger":
     # sc.tl.pca(adata, n_comps=embedding_size)
     num_cells = adata.X.shape[0]
 
-    # random_paths = [adata.obsm['X_pca'][i*100:(i+1)*100, :] for i in range(100)]
+elif dataset == "mouse_embryo":
+    adata = sc.read_h5ad("../data/mouse_embryo/mouse_embryo_0.2.h5ad")
+    # embedding_size = 50
+    # sc.tl.pca(adata, n_comps=embedding_size)
+    num_cells = adata.X.shape[0]
+
+
+
+# random_paths = [adata.obsm['X_pca'][i*100:(i+1)*100, :] for i in range(100)]
 
 #     sc.pp.highly_variable_genes(adata, flavor='seurat', n_top_genes=500)
 #     adata_hvg = adata[:, adata.var['highly_variable']]
@@ -75,7 +83,8 @@ scv.pl.scatter(adata,
               basis='X_draw_graph_fa',
               color=["day_numerical"],
               show=False,
-              save=f"sample_{str(branching_factors)}_{distribution}.png",
+              # save=f"sample_{str(branching_factors)}_{distribution}.png",
+              save=f"sample_mouse_embryo.png",
               title=f"Force Directed Graph",
               dpi=300)
 plt.show()

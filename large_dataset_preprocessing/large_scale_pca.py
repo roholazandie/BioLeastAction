@@ -6,7 +6,7 @@ from sklearn.decomposition import IncrementalPCA
 import scipy.sparse as sp
 from tqdm import tqdm
 
-anndata_files_directory = "/media/rohola/ssd_storage/split_embryos"
+anndata_files_directory = "/media/rohola/ssd_storage/mouse_embryo/split_days"
 
 ipca = IncrementalPCA(n_components=64)
 
@@ -51,7 +51,7 @@ for filename in tqdm(all_files, desc="Transform Files"):
         print(f"Error reading file: {filename}")
         print(e)
         continue
-    if adata.n_obs or adata.n_vars == 0:
+    if adata.n_obs == 0 or adata.n_vars == 0:
         print(f"Skipping empty file: {filename}")
         continue
     X = adata.X

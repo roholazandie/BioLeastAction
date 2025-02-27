@@ -47,6 +47,7 @@ def extract_force_directed_graph(adata,
     print(f"Time taken to compute force directed graph: {t6 - t5}")
 
     # adata.write(f"/home/rohola/codes/BioLeastAction/data/reprogramming_schiebinger_{knn_metric}_{n_neighbors}.h5ad")
+    adata.write(f"../data/mouse_embryo/mouse_embryo_{knn_metric}_{n_neighbors}.h5ad")
 
 
 
