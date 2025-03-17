@@ -15,8 +15,11 @@ adata = sc.read_h5ad("../data/reprogramming_schiebinger_serum_computed.h5ad")
 
 set_seed(42)
 
-min_temperature = 0.000001
-max_temperature = 0.1
+cell_types_to_idx = {'MEF/other': 0, 'MET': 1, 'Epithelial': 2, 'IPS': 3,
+                                  'Trophoblast': 4, 'Stromal': 5, 'Neural': 6}
+
+min_temperature = 0.001
+max_temperature = 1
 
 # Define the color map and normalization
 colormap = cm.get_cmap('coolwarm')
@@ -24,7 +27,7 @@ norm = mcolors.Normalize(vmin=min_temperature, vmax=max_temperature)
 
 fig, ax = plt.subplots()
 
-for data_temperature in np.arange(min_temperature, max_temperature, 0.01):
+for data_temperature in np.arange(min_temperature, max_temperature, 0.1):
     # Get a color based on the data_temperature
     color = colormap(norm(data_temperature))
 
@@ -37,6 +40,7 @@ for data_temperature in np.arange(min_temperature, max_temperature, 0.01):
     entropies = []
     for i, trajectory in tqdm(enumerate(train_dataset)):
         entropies.append(trajectory['entropies'])
+        cell_types = trajectory['cell_type_ids']
         if i == n_trajectories:
             break
 
@@ -58,9 +62,9 @@ sm.set_array([])  # Only needed for the color bar
 fig.colorbar(sm, ax=ax, label="Temperature Scale")
 
 # Labeling the plot
-ax.set_xlabel("Trajectory")
+ax.set_xlabel("Time steps")
 ax.set_ylabel("Entropy")
 ax.set_title("Entropy of the Trajectories")
 ax.legend()
-plt.savefig("figures/entropy_temperature_gradient_3.png", dpi=300, bbox_inches='tight')
+plt.savefig("../figures/entropy_analysis/entropy_temperature_gradient_whole_spectrum.png", dpi=300, bbox_inches='tight')
 plt.show()
