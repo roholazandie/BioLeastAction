@@ -99,6 +99,8 @@ ax.set_xlim(0, n_days + 3)
 # Annotate each row (cell type) with its Pearson r and p-value on the left.
 for i, cell_type in enumerate(sorted_cell_types):
     r_val, p_val = correlations[cell_type]
+    if p_val < 1e-18:
+        p_val = 1e-18
     annotation = f"r = {r_val:.2f}\np < {p_val:.2g}"
     # Place annotation at x = -1.5 (to the left) and vertically centered in the row (i + 0.5).
     ax.text(n_days + 0.5, i + 0.5, annotation,
