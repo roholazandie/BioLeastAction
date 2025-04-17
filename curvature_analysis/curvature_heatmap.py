@@ -187,13 +187,13 @@ for cell_type in sorted_cell_types:
     correlations[cell_type] = (r_val, p_val)
 
 # Plot the heatmap with annotations.
-plt.figure(figsize=(15, 8))
+plt.figure(figsize=(20, 10))
 ax = sns.heatmap(df_pivot, cmap="coolwarm", annot=False, fmt=".2f", vmin=-2, vmax=2)
-plt.title("Average Per-Cell Curvature by Time Step & Cell Type", size=14, fontweight='bold')
-plt.xlabel("Time Step", size=12, fontweight='bold')
-plt.ylabel("Cell Type", size=12, fontweight='bold')
-plt.xticks(rotation=0, size=12)
-plt.yticks(rotation=0, size=12)
+plt.title("Average Per-Cell Curvature by Time Step & Cell Type", size=15, fontweight='bold')
+plt.xlabel("Time Step", size=15, fontweight='bold')
+plt.ylabel("Cell Type", size=15, fontweight='bold')
+plt.xticks(rotation=0, size=13)
+plt.yticks(rotation=0, size=15)
 
 # Determine the number of time steps (columns) in the pivot table.
 n_days = df_pivot.shape[1]
@@ -209,10 +209,10 @@ for i, cell_type in enumerate(sorted_cell_types):
     annotation = f"r = {r_val:.2f}\np < {p_val:.2g}"
     # Annotate to the right of the heatmap.
     ax.text(n_days + 0.5, i + 0.5, annotation,
-            ha="left", va="center", fontsize=10, fontweight='bold',
+            ha="left", va="center", fontsize=12, fontweight='bold',
             bbox=dict(facecolor="white", alpha=0.3, edgecolor="none"))
 
 plt.tight_layout()
-plt.savefig("../figures/curvature_figures/curvature_heatmap_modified_new.png", dpi=300, bbox_inches='tight')
+plt.savefig("../figures/curvature_figures/curvature_heatmap_modified_new_1.png", dpi=300, bbox_inches='tight')
 plt.show()
 

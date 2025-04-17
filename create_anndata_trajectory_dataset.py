@@ -25,7 +25,8 @@ def process_chunk_joblib(start_idx, end_idx, position):
 
 # Load your data
 # adata = sc.read_h5ad("data/reprogramming_schiebinger_serum_computed.h5ad")
-adata = sc.read_h5ad("data/mouse_embryo/mouse_embryo_0.2.h5ad")
+# adata = sc.read_h5ad("data/mouse_embryo/mouse_embryo_0.2.h5ad")
+adata = sc.read_h5ad("/media/rohola/ssd_storage/uniform_day_numerical.h5ad")
 
 # Set parameters
 T = 0.1
@@ -33,7 +34,7 @@ normalize_embeddings = True
 markovian = True
 tau = 1
 C = 5
-num_processes = 45
+num_processes = 1
 
 # Instantiate your AnnDataTrajectoryDataset
 embedding_key = 'X_pca'
@@ -97,4 +98,5 @@ trajectories_dataset = DatasetDict({
 
 # Save the entire DatasetDict to disk
 # trajectories_dataset.save_to_disk(f'data/adata_trajectory_dataset_hf_lowtemp')
-trajectories_dataset.save_to_disk(f'data/mouse_embryo/mouse_embryo_trajectory_dataset_hf')
+# trajectories_dataset.save_to_disk(f'data/mouse_embryo/mouse_embryo_trajectory_dataset_hf')
+trajectories_dataset.save_to_disk(f'data/mouse_embryo/mouse_embryo_jax_trajectory_dataset_hf')

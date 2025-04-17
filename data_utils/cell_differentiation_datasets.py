@@ -124,15 +124,22 @@ class AnnDataTrajectoryDataset(Dataset):
         self.adata.obs["day"] = self.adata.obs["day"].astype(float).astype("category")
         self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
 
+        # self.adata.obs["day"] = self.adata.obs["day"].str.extract(r'(\d+\.\d+)')[0].astype(float)
+        # self.adata.obs["day_numerical"] = self.adata.obs["day"].astype(float)
+
         self.embedding_key = embedding_key
-        self.days_values = sorted(list(set(self.adata.obs["day_numerical"])))
+
+        self.days_values = sorted(
+            list(set(self.adata.obs["day_numerical"].values[~np.isnan(self.adata.obs["day_numerical"].values)])))
         self.T = T
 
         self.cell_types = list(set(self.adata.obs['cell_sets']))
-        # self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
-        # the cell types to index should be fixed
         self.cell_types_to_idx = {'MEF/other': 0, 'MET': 1, 'Epithelial': 2, 'IPS': 3,
                                   'Trophoblast': 4, 'Stromal': 5, 'Neural': 6}
+
+        # self.cell_types = [x.replace(' ', '_') for x in list(set(self.adata.obs['cell_type']))]
+        # self.cell_types_to_idx = {cell_type: idx for idx, cell_type in enumerate(self.cell_types)}
+
 
         # Normalize the embeddings
         if normalize_embeddings:
@@ -145,35 +152,54 @@ class AnnDataTrajectoryDataset(Dataset):
 
     def __len__(self) -> int:
         # return len(self.adata)
-        return 100000
+        return 10000
 
-    def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
+    # def compute_similarity(self, pca_current_day, pca_next_day, current_cell_umap, next_day_umap):
+    #     # Calculate correlation between current day and each cell in the next day
+    #     correlations_pca = np.dot(pca_next_day, pca_current_day.T).flatten()
+    #
+    #     # Apply Log-Sum-Exp Trick
+    #     max_val_pca = np.max(correlations_pca / self.T)  # Find the maximum to subtract for numerical stability
+    #     similarity_pca = np.exp((correlations_pca / self.T) - max_val_pca)  # Apply the shift
+    #     softmax_similarity_pca = similarity_pca / np.sum(similarity_pca)
+    #
+    #     # Calculate correlation between current day and each cell in the next day
+    #     correlations_umap = np.dot(next_day_umap, current_cell_umap.T).flatten()
+    #
+    #     # Apply Log-Sum-Exp Trick
+    #     max_val_umap = np.max(correlations_umap / self.T)  # Find the maximum to subtract for numerical stability
+    #     similarity_umap = np.exp((correlations_umap / self.T) - max_val_umap)  # Apply the shift
+    #     softmax_similarity_umap = similarity_umap / np.sum(similarity_umap)
+    #
+    #     # Combine the two similarities
+    #     combined_similarity = 0.5 * softmax_similarity_pca + 0.5 * softmax_similarity_umap
+    #
+    #     return combined_similarity
+
+
+    def compute_similarity(self, pca_current_day, pca_next_day):
         # Calculate correlation between current day and each cell in the next day
         correlations_pca = np.dot(pca_next_day, pca_current_day.T).flatten()
 
+        if len(correlations_pca) == 0:
+            raise ValueError("No valid correlations found. Check the PCA embeddings.")
         # Apply Log-Sum-Exp Trick
         max_val_pca = np.max(correlations_pca / self.T)  # Find the maximum to subtract for numerical stability
         similarity_pca = np.exp((correlations_pca / self.T) - max_val_pca)  # Apply the shift
         softmax_similarity_pca = similarity_pca / np.sum(similarity_pca)
 
-        # Calculate correlation between current day and each cell in the next day
-        correlations_umap = np.dot(next_day_umap, current_cell_umap.T).flatten()
-
-        # Apply Log-Sum-Exp Trick
-        max_val_umap = np.max(correlations_umap / self.T)  # Find the maximum to subtract for numerical stability
-        similarity_umap = np.exp((correlations_umap / self.T) - max_val_umap)  # Apply the shift
-        softmax_similarity_umap = similarity_umap / np.sum(similarity_umap)
-
         # Combine the two similarities
-        combined_similarity = 0.5 * softmax_similarity_pca + 0.5 * softmax_similarity_umap
+        combined_similarity = softmax_similarity_pca
 
         return combined_similarity
 
     def __getitem__(self, index: int):
         np.random.seed(index)  # Seed for reproducibility
-
+        print(index)
         trajectory = []
         adata_first_day = self.adata[self.adata.obs["day_numerical"] == self.days_values[0], :]
+        if len(adata_first_day.obs.index) == 0:
+            raise ValueError("No cells found for the first day. Check your data.")
         cell_idx = np.random.choice(adata_first_day.obs.index, 1)[0]
         current_cell_idx = cell_idx
 
@@ -190,6 +216,7 @@ class AnnDataTrajectoryDataset(Dataset):
             self.embedding_key: embedding,
             "expression": expression,
             "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_sets'].item()],
+            # "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_type'].item().replace(' ', '_')],
             "entropy": 0.0
         })
 
@@ -207,19 +234,24 @@ class AnnDataTrajectoryDataset(Dataset):
                 # Get PCA embeddings for the next day
                 pca_next_day = adata_next_day.obsm["X_pca"]
 
-                # Get the X_umap of the current cell
-                current_cell_umap = np.array(self.adata[current_cell_idx].obsm["X_umap"].tolist())
-                current_cell_umap = current_cell_umap / np.linalg.norm(current_cell_umap)
-                # Get the X_umap of the next day
-                next_day_umap = adata_next_day.obsm["X_umap"]
-
-                # Compute similarity
                 softmax_similarity = self.compute_similarity(
                     pca_current_day,
-                    pca_next_day,
-                    current_cell_umap,
-                    next_day_umap
+                    pca_next_day
                 )
+
+                # # Get the X_umap of the current cell
+                # current_cell_umap = np.array(self.adata[current_cell_idx].obsm["X_umap"].tolist())
+                # current_cell_umap = current_cell_umap / np.linalg.norm(current_cell_umap)
+                # # Get the X_umap of the next day
+                # next_day_umap = adata_next_day.obsm["X_umap"]
+                #
+                # # Compute similarity
+                # softmax_similarity = self.compute_similarity(
+                #     pca_current_day,
+                #     pca_next_day,
+                #     current_cell_umap,
+                #     next_day_umap
+                # )
 
                 # Compute the entropy
                 entropy = -np.sum(softmax_similarity * np.log(softmax_similarity)) / np.log(len(softmax_similarity))
@@ -238,6 +270,7 @@ class AnnDataTrajectoryDataset(Dataset):
                     self.embedding_key: embedding,
                     "expression": expression,
                     "cell_type_ids": self.cell_types_to_idx[self.adata[selected_cell_idx].obs['cell_sets'].item()],
+                    # "cell_type_ids": self.cell_types_to_idx[self.adata[cell_idx].obs['cell_type'].item().replace(' ', '_')],
                     "entropy": entropy
                 })
                 current_cell_idx = selected_cell_idx

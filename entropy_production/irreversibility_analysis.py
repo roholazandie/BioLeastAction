@@ -14,7 +14,7 @@ days_values = sorted(list(set(adata.obs["day_numerical"])))
 adata_first_day = adata[adata.obs["day_numerical"] == days_values[0], :]
 
 # Load model
-checkpoint_path = "../checkpoints/all_cells_vocabulary_no_trainer2/grateful-energy-top_p_0.7_top_k_2000_temperature_0.9/epoch_2_top_p_0.7_top_k_2000_temperature_0.9"
+checkpoint_path = "/media/rohola/ssd_storage/checkpoints/all_cells_vocabulary_no_trainer2/grateful-energy-top_p_0.7_top_k_2000_temperature_0.9/epoch_2_top_p_0.7_top_k_2000_temperature_0.9"
 
 model = GPT2DistanceLeastActionModel.from_pretrained(
     checkpoint_path,
@@ -57,7 +57,7 @@ for trajectory in tqdm(eval_dataset, desc="Computing entropy productions and pro
     input_ids = torch.tensor(trajectory['input_ids'], dtype=torch.long).to('cuda:0')
     kk += 1
     # NOTE: For demonstration, only process first 10 items; remove to process all
-    if kk > 5000:
+    if kk > 1000:
         break
 
     for n in range(1, max_length + 1):  # segment length
@@ -120,39 +120,43 @@ if np.any(non_nan_mask):
 
 
 # --- Plot mean entropy_production heatmap ---
-plt.figure(figsize=(10, 8))
-sns.heatmap(
+plt.figure(figsize=(12, 10))
+ax = sns.heatmap(
     mean_entropy_production_matrix,
     cmap="magma",
     annot=False,
     mask=np.isnan(mean_entropy_production_matrix),
-    cbar_kws={'label': 'Mean Entropy Production'}
 )
-plt.xlabel("Start Index of Reversed Sequence Segment (i)", size=12)
-plt.xticks(size=12)
-plt.ylabel("Reversed Sequence Segment Length (n)", size=12)
-plt.yticks(size=12)
-plt.title("Mean Entropy Production by Reversed Input Sequence Segment", size=12, fontweight='bold')
+cbar = ax.collections[0].colorbar
+cbar.set_label('Mean Entropy Production', fontsize=15)
+
+plt.xlabel("Start Index of Reversed Sequence Segment (i)", size=15)
+plt.xticks(size=10)
+plt.ylabel("Reversed Sequence Segment Length (n)", size=15)
+plt.yticks(size=10)
+plt.title("Mean Entropy Production by Reversed Input Sequence Segment", size=15, fontweight='bold')
 plt.gca().spines[:].set_visible(False)
 
-plt.savefig(f"figures/entropy_production/entropy_production_heatmap_{kk}.svg", format="svg", bbox_inches='tight')
+plt.savefig(f"../figures/entropy_production/entropy_production_heatmap_{kk}.svg", format="svg", bbox_inches='tight')
 plt.show()
 
 # --- Plot variance heatmap ---
-plt.figure(figsize=(10, 8))
-sns.heatmap(
+plt.figure(figsize=(12, 10))
+ax = sns.heatmap(
     var_entropy_production_matrix,
     cmap="magma",
     annot=False,
     mask=np.isnan(var_entropy_production_matrix),
-    cbar_kws={'label': 'Entropy Production Variance'}
 )
-plt.xlabel("Start Index of Reversed Sequence Segment (i)", size=12)
-plt.xticks(size=12)
-plt.ylabel("Reversed Sequence Segment Length (n)", size=12)
-plt.yticks(size=12)
-plt.title("Variance of Entropy Production by Reversed Input Sequence Segment", size=12, fontweight='bold')
+cbar = ax.collections[0].colorbar
+cbar.set_label('Entropy Production Variance', fontsize=15)
+
+plt.xlabel("Start Index of Reversed Sequence Segment (i)", size=15)
+plt.xticks(size=10)
+plt.ylabel("Reversed Sequence Segment Length (n)", size=15)
+plt.yticks(size=10)
+plt.title("Variance of Entropy Production by Reversed Input Sequence Segment", size=15, fontweight='bold')
 plt.gca().spines[:].set_visible(False)
 
-plt.savefig(f"figures/entropy_production/entropy_production_variance_heatmap_{kk}.svg", format="svg", bbox_inches='tight')
+plt.savefig(f"../figures/entropy_production/entropy_production_variance_heatmap_{kk}.svg", format="svg", bbox_inches='tight')
 plt.show()
